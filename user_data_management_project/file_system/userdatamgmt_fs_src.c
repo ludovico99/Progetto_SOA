@@ -107,13 +107,66 @@ static void userdatafs_kill_superblock(struct super_block *s) {
 struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data) {
 
     struct dentry *ret;
+    blk_element* blk_elem = NULL;
+    struct buffer_head *bh = NULL;
+    int offset = 0;
 
     ret = mount_bdev(fs_type, flags, dev_name, data, userdatafs_fill_super);
 
     if (unlikely(IS_ERR(ret)))
         printk("%s: error mounting userdatafs",MOD_NAME);
-    else
+    else {
         printk("%s: userdatafs is succesfully mounted on from device %s\n",MOD_NAME,dev_name);
+
+        //Start filling the block device representation in RAM
+        bdev_md = kzalloc(sizeof(bdev_metadata), GFP_KERNEL);
+        if (!blk_md){
+            printk("%s: error allocationg bdev_metadata struct\n",MOD_NAME);
+            return -ENOMEM;
+        }
+
+        bdev_md.bdev = blkdev_get_by_path(dev_name, FMODE_READ|FMODE_WRITE, NULL);
+        bdev_md.path = dev_name;
+
+        //Initialization of struct blk_metadata
+        for (int i = 0; i < NBLOCKS, i++){
+            
+            offset = get_offset(i);
+            bh = (struct buffer_head *) sb_bread((bdev_md.bdev)->bd_super, offset);
+            if(!bh){
+                printk("%s: error retrieving the block at offset %d\n",MOD_NAME, offset);
+                return -EIO;
+            }
+            if (bh->b_data != NULL){
+                AUDIT printk("%s: retrieved the block at offset %d\n",MOD_NAME, offset);
+                blk_elem = kzalloc(sizeof(blk_element), GFP_KERNEL);
+                if (!blk_elem){
+                    printk("%s: error allocationg blk_element struct\n",MOD_NAME);
+                    return -ENOMEM;
+                }
+                blk_elem.blk =  (blk*) bh->b_data;
+
+                //TODO
+                
+                brelse(bh);
+            }
+        }    
+        len = strlen(dev_name);        
+        strncpy(md.block_device_name, dev_name, len);
+        md.block_device_name[len] = '\0';
+
+        
+
+        
+
+
+        if(bdev_md.bdev == NULL){
+            printk("%s: can't get the struct block_device associated to %s", MODNAME, md.block_device_name);
+            return ERR_PTR(-EINVAL);
+        }
+
+        
+    }
 
     return ret;
 }

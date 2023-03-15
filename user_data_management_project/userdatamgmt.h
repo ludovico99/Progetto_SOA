@@ -21,5 +21,10 @@
 #define MD_SIZE sizeof(unsigned int)
 #define SIZE (BLK_SIZE - MD_SIZE)
 #define SYNC_FLUSH 1
+#define NBLOCKS 20
 
+#define get_index(offset)   ((offset) - 2)
+#define get_offset(index)   ((index) + 2)
+
+#define get_data(base_ptr)       ((unsigned long) base_ptr + MD_SIZE )
 #endif
