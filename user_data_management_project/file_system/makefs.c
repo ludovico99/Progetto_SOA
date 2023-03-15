@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "userdatafs.h"
+#include "userdatamgmt_fs.h"
 
 /*
 	This makefs will write the following information onto the disk
@@ -28,7 +28,7 @@ int main(int argc, char *argv[])
 	char *file_body = "Wathever content you would like.\n";//this is the default content of the unique file 
 
 	if (argc != 2) {
-		printf("Usage: format_fs <device>\n");
+		printf("Usage: makefs <device>\n");
 		return -1;
 	}
 
@@ -41,11 +41,11 @@ int main(int argc, char *argv[])
 	//pack the superblock
 	sb.version = 1;//file system version
 	sb.magic = MAGIC;
-	sb.block_size = DEFAULT_BLOCK_SIZE;
+	sb.block_size = BLK_SIZE;
 
 	ret = write(fd, (char *)&sb, sizeof(sb));
 
-	if (ret != DEFAULT_BLOCK_SIZE) {
+	if (ret != BLK_SIZE) {
 		printf("Bytes written [%d] are not equal to the default block size.\n", (int)ret);
 		close(fd);
 		return ret;
@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
 	printf("File inode written succesfully.\n");
 	
 	//padding for block 1
-	nbytes = DEFAULT_BLOCK_SIZE - sizeof(file_inode);
+	nbytes = BLK_SIZE - sizeof(file_inode);
 	block_padding = malloc(nbytes);
 
 	ret = write(fd, block_padding, nbytes);

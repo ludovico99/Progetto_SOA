@@ -1,1 +1,0 @@
-cmd_/home/ludovico99/Scrivania/Progetto_SOA/user_data_management_fs/Module.symvers := sed 's/\.ko$$/\.o/' /home/ludovico99/Scrivania/Progetto_SOA/user_data_management_fs/modules.order | scripts/mod/modpost -m -a  -o /home/ludovico99/Scrivania/Progetto_SOA/user_data_management_fs/Module.symvers -e -i Module.symvers   -T -
