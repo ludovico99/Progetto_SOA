@@ -1,2 +1,0 @@
-/home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/lib/scth.o /home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/userdatamgmt.o /home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/file_system/file.o /home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/file_system/dir.o /home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/rcu_utils.o
-
