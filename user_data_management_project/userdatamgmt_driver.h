@@ -4,7 +4,6 @@
 #include <linux/spinlock.h>
 #include "userdatamgmt.h"
 
-
 // user_data_management_driver.c
 extern long sys_put_data;
 extern long sys_get_data;
@@ -20,34 +19,40 @@ extern const struct file_operations dev_fops;
     -blk_rcu_list: contains the metadata to implement an RCU approach. It contains blk_element
 */
 
-
-struct blk_element{
-    struct blk_element * next __attribute__((aligned(64)));
-    unsigned int dirtiness; //if 1 the changes should be flushed into the device
+struct blk_element
+{
+    struct blk_element *right __attribute__((aligned(64)));
+    struct blk_element *left __attribute__((aligned(64)));
+    unsigned int dirtiness; // if 1 the changes should be flushed into the device
     int index;
-    struct blk * blk;
+    struct blk *blk;
 };
 
-struct blk{
-	unsigned int metadata
+struct blk
+{
+    unsigned int metadata;
     char data[SIZE];
 };
 
-struct bdev_metadata{
+struct bdev_metadata
+{
     struct block_device *bdev;
-    const char *path; //path to the block device to open
+    const char *path; // path to the block device to open
 };
 
-struct blk_rcu_list{
-	unsigned long standing[EPOCHS] __attribute__((aligned(64))); // In memory alignment to reduce CC transactions
-	unsigned long epoch __attribute__((aligned(64))); // In memory alignment to reduce CC transactions
-	int next_epoch_index; // index of the next epoch
-	spinlock_t  write_lock; // write lock to be acquired in order to modify the shared data structure
-	struct blk_element * head; // pointer to the shared data structure
-    struct bdev_metadata bdev_md __attribute__((aligned(64))); //Metadata of the block device
-} __attribute__((packed));
+struct blk_rcu_tree
+{
+    unsigned long standing[EPOCHS] __attribute__((aligned(64))); // In memory alignment to reduce CC transactions
+    unsigned long epoch __attribute__((aligned(64)));            // In memory alignment to reduce CC transactions
+    int next_epoch_index;                                        // index of the next epoch
+    spinlock_t write_lock;                                       // write lock to be acquired in order to modify the shared data structure
+    struct blk_element *head;                                    // pointer to the shared data structure
+    struct bdev_metadata *bdev_md __attribute__((aligned(64)));  // Metadata of the block device
+} __attribute__((aligned(64)));
 
-typedef blk_rcu_list list __attribute__((aligned(64)));
-
-
+extern void rcu_tree_init(struct blk_rcu_tree *, struct bdev_metadata *);
+extern struct blk_element *lookup(struct blk_element *, int);
+extern void insert(struct blk_element **, struct blk_element *);
+extern void stampa_albero(struct blk_element *root);
+extern void free_structs(struct blk_rcu_tree*);
 #endif

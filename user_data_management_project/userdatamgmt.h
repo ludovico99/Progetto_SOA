@@ -21,10 +21,14 @@
 #define MD_SIZE sizeof(unsigned int)
 #define SIZE (BLK_SIZE - MD_SIZE)
 #define SYNC_FLUSH 1
-#define NBLOCKS 20
+#define NBLOCKS 10
+#define PERIOD 100
 
 #define get_index(offset)   ((offset) - 2)
 #define get_offset(index)   ((index) + 2)
 
-#define get_data(base_ptr)       ((unsigned long) base_ptr + MD_SIZE )
+
+#define MASK 0x8000000000000000
+//#define get_index(my_epoch) (my_epoch & MASK) ? 1 : 0
+
 #endif

@@ -1,7 +1,7 @@
 
 obj-m += progetto_soa.o 
-progetto_soa-objs += lib/scth.o userdatamgmt.o file_system/file.o file_system/dir.o 
-NBLOCKS = 20
+progetto_soa-objs += lib/scth.o userdatamgmt.o file_system/file.o file_system/dir.o rcu_utils.o
+NBLOCKS = 10
 
 A = $(shell cat /sys/module/the_usctm/parameters/sys_call_table_address)
 
@@ -31,7 +31,7 @@ mount-fs:
 
 	mount -o loop -t userdatafs image ./mount/
 
-unmount-all:
+unmount-fs:
 #	rm $(dev)
 	umount ./mount ; rmdir ./mount/
 

@@ -25,18 +25,21 @@
 #include <asm/io.h>
 #include <linux/syscalls.h>
 
+#include <linux/blk_types.h>
+#include <linux/blkdev.h>
+
 #include "userdatamgmt_fs.h"
+#include "../userdatamgmt_driver.h"
 
-static struct super_operations my_super_ops = {
-};
+struct blk_rcu_tree the_tree;
+int mounted = 0;
 
+static struct super_operations my_super_ops = {};
 
-static struct dentry_operations my_dentry_ops = {
-};
+static struct dentry_operations my_dentry_ops = {};
 
-
-
-int userdatafs_fill_super(struct super_block *sb, void *data, int silent) {   
+int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
+{
 
     struct inode *root_inode;
     struct buffer_head *bh;
@@ -44,41 +47,42 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent) {
     struct timespec64 curr_time;
     uint64_t magic;
 
-
-    //Unique identifier of the filesystem
+    // Unique identifier of the filesystem
     sb->s_magic = MAGIC;
 
     bh = sb_bread(sb, SB_BLOCK_NUMBER);
-    if(!sb){
-	return -EIO;
+    if (!sb)
+    {
+        return -EIO;
     }
     sb_disk = (struct userdatafs_sb_info *)bh->b_data;
     magic = sb_disk->magic;
     brelse(bh);
 
-    //check on the expected magic number
-    if(magic != sb->s_magic){
-	return -EBADF;
+    // check on the expected magic number
+    if (magic != sb->s_magic)
+    {
+        return -EBADF;
     }
 
-    sb->s_fs_info = NULL; //FS specific data (the magic number) already reported into the generic superblock
-    sb->s_op = &my_super_ops;//set our own operations
+    sb->s_fs_info = NULL;     // FS specific data (the magic number) already reported into the generic superblock
+    sb->s_op = &my_super_ops; // set our own operations
 
-
-    root_inode = iget_locked(sb, 0);//get a root inode indexed with 0 from cache
-    if (!root_inode){
+    root_inode = iget_locked(sb, 0); // get a root inode indexed with 0 from cache
+    if (!root_inode)
+    {
         return -ENOMEM;
     }
 
-    root_inode->i_ino = USERDATAFS_ROOT_INODE_NUMBER;//this is actually 10
-    inode_init_owner(&init_user_ns, root_inode, NULL, S_IFDIR);//set the root user as owned of the FS root
+    root_inode->i_ino = USERDATAFS_ROOT_INODE_NUMBER;           // this is actually 10
+    inode_init_owner(&init_user_ns, root_inode, NULL, S_IFDIR); // set the root user as owned of the FS root
     root_inode->i_sb = sb;
-    root_inode->i_op = &userdatafs_inode_ops;//set our inode operations
-    root_inode->i_fop = &userdatafs_dir_operations;//set our file operations
-    //update access permission
+    root_inode->i_op = &userdatafs_inode_ops;       // set our inode operations
+    root_inode->i_fop = &userdatafs_dir_operations; // set our file operations
+    // update access permission
     root_inode->i_mode = S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH;
 
-    //baseline alignment of the FS timestamp to the current time
+    // baseline alignment of the FS timestamp to the current time
     ktime_get_real_ts64(&curr_time);
     root_inode->i_atime = root_inode->i_mtime = root_inode->i_ctime = curr_time;
 
@@ -89,92 +93,114 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent) {
     if (!sb->s_root)
         return -ENOMEM;
 
-    sb->s_root->d_op = &my_dentry_ops;//set our dentry operations
+    sb->s_root->d_op = &my_dentry_ops; // set our dentry operations
 
-    //unlock the inode to make it usable
+    // unlock the inode to make it usable
     unlock_new_inode(root_inode);
 
     return 0;
 }
 
-static void userdatafs_kill_superblock(struct super_block *s) {
+static void userdatafs_kill_superblock(struct super_block *s)
+{
     kill_block_super(s);
-    printk(KERN_INFO "%s: userdatafs unmount succesful.\n",MOD_NAME);
+    free_structs(&the_tree);
+    printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
 }
 
-//called on file system mounting 
-struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data) {
+// called on file system mounting
+struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data)
+{
 
     struct dentry *ret;
-    blk_element* blk_elem = NULL;
+    struct blk_element *blk_elem = NULL;
+    struct bdev_metadata *bdev_md = NULL;
     struct buffer_head *bh = NULL;
+    int i = 0;
+    int mnt;
     int offset = 0;
+
+
+    mnt = __sync_val_compare_and_swap(&mounted,0,1);
+    if(mnt == 1){
+        printk("%s: the device driver can support only a single mount point at time\n", MOD_NAME);
+        return ERR_PTR(-EBUSY);
+    }
 
     ret = mount_bdev(fs_type, flags, dev_name, data, userdatafs_fill_super);
 
     if (unlikely(IS_ERR(ret)))
-        printk("%s: error mounting userdatafs",MOD_NAME);
-    else {
-        printk("%s: userdatafs is succesfully mounted on from device %s\n",MOD_NAME,dev_name);
-
-        //Start filling the block device representation in RAM
-        bdev_md = kzalloc(sizeof(bdev_metadata), GFP_KERNEL);
-        if (!blk_md){
-            printk("%s: error allocationg bdev_metadata struct\n",MOD_NAME);
-            return -ENOMEM;
+        printk("%s: error mounting userdatafs", MOD_NAME);
+    else
+    {
+        printk("%s: userdatafs is succesfully mounted on from device %s\n", MOD_NAME, dev_name);
+        // initiliazation of the RCU tree
+        
+        // Start filling the block device representation in RAM
+        bdev_md = (struct bdev_metadata *)kzalloc(sizeof(struct bdev_metadata), GFP_KERNEL);
+        if (!bdev_md)
+        {
+            printk("%s: error allocationg bdev_metadata struct\n", MOD_NAME);
+            return ERR_PTR(-ENOMEM);
         }
 
-        bdev_md.bdev = blkdev_get_by_path(dev_name, FMODE_READ|FMODE_WRITE, NULL);
-        bdev_md.path = dev_name;
-
-        //Initialization of struct blk_metadata
-        for (int i = 0; i < NBLOCKS, i++){
-            
-            offset = get_offset(i);
-            bh = (struct buffer_head *) sb_bread((bdev_md.bdev)->bd_super, offset);
-            if(!bh){
-                printk("%s: error retrieving the block at offset %d\n",MOD_NAME, offset);
-                return -EIO;
-            }
-            if (bh->b_data != NULL){
-                AUDIT printk("%s: retrieved the block at offset %d\n",MOD_NAME, offset);
-                blk_elem = kzalloc(sizeof(blk_element), GFP_KERNEL);
-                if (!blk_elem){
-                    printk("%s: error allocationg blk_element struct\n",MOD_NAME);
-                    return -ENOMEM;
-                }
-                blk_elem.blk =  (blk*) bh->b_data;
-
-                //TODO
-                
-                brelse(bh);
-            }
-        }    
-        len = strlen(dev_name);        
-        strncpy(md.block_device_name, dev_name, len);
-        md.block_device_name[len] = '\0';
-
-        
-
-        
-
-
-        if(bdev_md.bdev == NULL){
-            printk("%s: can't get the struct block_device associated to %s", MODNAME, md.block_device_name);
+        bdev_md->bdev = blkdev_get_by_path(dev_name, FMODE_READ | FMODE_WRITE, NULL);
+        if (bdev_md->bdev == NULL)
+        {   kfree(bdev_md);
+            printk("%s: Unable to get the struct block_device for %s", MOD_NAME, dev_name);
             return ERR_PTR(-EINVAL);
         }
+        bdev_md->path = dev_name;
+        rcu_tree_init(&the_tree, bdev_md);
+        // Initialization of struct blk_metadata
+        for (i = 0; i < NBLOCKS; i++)
+        {
 
-        
+            offset = get_offset(i);
+            bh = (struct buffer_head *)sb_bread((bdev_md->bdev)->bd_super, offset);
+            if (!bh)
+            {   
+                
+                printk("%s: error retrieving the block at offset %d\n", MOD_NAME, offset);
+                return ERR_PTR(-EIO);
+            }
+            if (bh->b_data != NULL)
+            {
+                AUDIT printk("%s: retrieved the block at offset %d (index %d)\n", MOD_NAME, offset, i);
+                blk_elem = (struct blk_element *)kzalloc(sizeof(struct blk_element), GFP_KERNEL);
+
+                if (!blk_elem)
+                {   
+                    free_structs(&the_tree);
+                    printk("%s: error allocationg blk_element struct\n", MOD_NAME);
+                    return ERR_PTR(-ENOMEM);
+                }
+
+                blk_elem->blk = (struct blk *)bh->b_data;
+                blk_elem->index = i;
+
+                AUDIT printk("%s: Block at offset %d (index %d) contains the message = %s\n", MOD_NAME, offset, i, blk_elem->blk->data);
+
+                insert(&the_tree.head, blk_elem);
+                // AUDIT printk("%s: Block at index i contains: %s",MOD_NAME, lookup(the_tree.head, i)->blk->data);
+                brelse(bh);
+            }
+        }
     }
-
     return ret;
 }
 
-//file system structure
+// file system structure
 static struct file_system_type userdatafs_type = {
-	.owner = THIS_MODULE,
-        .name           = "userdatafs",
-        .mount          = userdatafs_mount,
-        .kill_sb        = userdatafs_kill_superblock,
+    .owner = THIS_MODULE,
+    .name = "userdatafs",
+    .mount = userdatafs_mount,
+    .kill_sb = userdatafs_kill_superblock,
 };
+
+
+
+
+
+
