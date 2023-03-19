@@ -16,13 +16,26 @@
 */
 
 char* testo[] = {
-"Ei fu. Siccome immobile, Dato il mortal sospiro, Stette la spoglia immemore Orba di tanto spiro, Così percossa, attonita La terra al nunzio sta,",
-"Muta pensando all’ultima Ora dell’uom fatale; Nè sa quando una simile Orma di piè mortale La sua cruenta polvere A calpestar verrà.", 
-"Lui folgorante in solio Vide il mio genio e tacque; Quando, con vece assidua, Cadde, risorse e giacque, Di mille voci al sonito Mista la sua non ha:",
-"Vergin di servo encomio E di codardo oltraggio, Sorge or commosso al subito Sparir di tanto raggio: E scioglie all’urna un cantico Che forse non morrà.",
-"Dall’Alpi alle Piramidi, Dal Manzanarre al Reno, Di quel securo il fulmine Tenea dietro al baleno; Scoppiò da Scilla al Tanai, Dall’uno all’altro mar.",
-"ciao sono lucia e sono una sirena", "può sembrare strano ma è una storia vera", "la leggenda su di noi è già la verità ...", 
-"dragon ball gt, siamo tutti qui", "non c'è un drago più super di così", "dragon ball perchè, ogni sfera è ...", "l'energia che risplende in te!" };
+"I have a dream  - Martin Luther King Jr.",
+"Ask not what your country can do for you, ask what you can do for your country  - John F. Kennedy",
+"All men are created equal - Thomas Jefferson",
+"The only thing we have to fear is fear itself - Franklin D. Roosevelt",
+"Four score and seven years ago - Abraham Lincoln",
+"We shall fight on the beaches - Winston Churchill",
+"Injustice anywhere is a threat to justice everywhere - Martin Luther King Jr.",
+"Veni, vidi, vici - Julius Caesar",
+"Give me liberty or give me death - Patrick Henry",
+"I came, I saw, I conquered - Julius Caesar",
+"Tear down this wall! - Ronald Reagan",
+"Et tu, Brute? - Julius Caesar",
+"It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. - Jane Austen",
+"The fault, dear Brutus, is not in our stars, but in ourselves. - William Shakespeare",
+"To be or not to be, that is the question. - William Shakespeare",
+"Cogito, ergo sum - René Descartes",
+"Elementary, my dear Watson - Sherlock Holmes",
+"No man is an island - John Donne",
+"We hold these truths to be self-evident, that all men are created equal - Thomas Jefferson",
+"Yes we can - Barack Obama"};
 
 int main(int argc, char *argv[])
 {
@@ -33,7 +46,7 @@ int main(int argc, char *argv[])
 	struct userdatafs_inode file_inode;
 	struct userdatafs_dir_record record;
 	char *block_padding;
-	unsigned int metadata = 1;
+	unsigned char metadata = 0x1 << ((sizeof(unsigned char))*8 - 1);
 
 	char *file_body = "Wathever content you would like.\n"; // this is the default content of the unique file
 
@@ -105,8 +118,15 @@ int main(int argc, char *argv[])
 			printf("The block is too small");
 			return -1;
 		}
-
+		if (i%2 != 0) {
+			metadata = set_invalid(metadata);
+		}
+		else {
+	
+			metadata = set_valid(metadata);
+		}
 		ret = write(fd, &metadata, MD_SIZE);
+		printf("Metadata: %d\n", get_validity(metadata));
 		if (ret != MD_SIZE)
 		{
 			printf("Writing the metadata has failed.\n");

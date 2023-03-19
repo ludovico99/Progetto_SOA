@@ -1,5 +1,6 @@
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/version.h>
 #include <linux/fs.h>
 #include <linux/timekeeping.h>
 #include <linux/time.h>
@@ -36,7 +37,12 @@ struct dentry *userdatafs_lookup(struct inode *parent_inode, struct dentry *chil
 
 
 	//this work is done if the inode was not already cached
-	inode_init_owner(&init_user_ns, the_inode, NULL, S_IFREG );
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,12,0)
+    	inode_init_owner(&init_user_ns, the_inode, NULL, S_IFREG); // set the root user as owned of the FS root      
+    #else 
+		inode_init_owner(the_inode, NULL, S_IFREG); // set the root user as owned of the FS root
+    #endif
+
 	the_inode->i_mode = S_IFREG | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH;
     the_inode->i_fop = &dev_fops;
 	the_inode->i_op = &userdatafs_inode_ops;

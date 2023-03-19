@@ -72,9 +72,9 @@ void rcu_tree_init(struct blk_rcu_tree *t, struct bdev_metadata *bdev_md)
 }
 
 struct blk_element *lookup(struct blk_element *root, int index)
-{   
+{
 
-    //AUDIT printk("%s: lookup operation started for block at index %d", MOD_NAME, index);
+    // AUDIT printk("%s: lookup operation started for block at index %d", MOD_NAME, index);
     if (root == NULL)
     {
         return NULL;
@@ -82,26 +82,25 @@ struct blk_element *lookup(struct blk_element *root, int index)
 
     if (index > root->index)
     {
-        //AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
+        // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
         return lookup(root->right, index);
     }
     else if (index < root->index)
     {
-        //AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
+        // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
         return lookup(root->left, index);
     }
     else
-    {   
+    {
         AUDIT printk("%s: lookup operation completed for block with index %d", MOD_NAME, index);
         return root;
     }
 }
-    
 
 void insert(struct blk_element **root, struct blk_element *newNode)
 {
     int index = newNode->index;
-    //AUDIT printk("%s: insert operation started for block at index %d", MOD_NAME, index);
+    // AUDIT printk("%s: insert operation started for block at index %d", MOD_NAME, index);
     if (*root == NULL)
     {
         *root = newNode;
@@ -111,12 +110,12 @@ void insert(struct blk_element **root, struct blk_element *newNode)
 
     if (index > (*root)->index)
     {
-        //AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
+        // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
         insert(&((*root)->right), newNode);
     }
     else if (index < (*root)->index)
     {
-        //AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
+        // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
         insert(&((*root)->left), newNode);
     }
 }
@@ -131,26 +130,24 @@ void insert(struct blk_element **root, struct blk_element *newNode)
 //     }
 // }
 
-static void free_tree(struct blk_element* root) {
-    if (root == NULL) {
+
+static void free_tree(struct blk_element *root)
+{
+    if (root == NULL)
+    {
         return;
     }
 
     free_tree(root->left);
     free_tree(root->right);
+
+    kfree(root -> blk);
     kfree(root);
 }
 
+void free_structs(struct blk_rcu_tree *tree)
+{
 
-
-void free_structs(struct blk_rcu_tree* tree) {
-   
-    kfree(tree ->standing);
-    kfree(tree ->bdev_md);
-    kfree(&tree -> epoch);
-    kfree(&tree -> next_epoch_index);
-
-    free_tree (tree->head);
-    kfree(tree);
+    kfree(tree->bdev_md);
+    free_tree(tree->head);
 }
-

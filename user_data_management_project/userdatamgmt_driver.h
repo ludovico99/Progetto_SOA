@@ -16,7 +16,7 @@ extern const struct file_operations dev_fops;
     -blk_metadata: contains the metadata for a block in the device
     -blk_element: represent an element in the RCU list
     -bdev_metadata: contains the metadata for the block device
-    -blk_rcu_list: contains the metadata to implement an RCU approach. It contains blk_element
+    -blk_rcu_tree: contains the metadata to implement an RCU approach. It contains blk_element
 */
 
 struct blk_element
@@ -30,13 +30,14 @@ struct blk_element
 
 struct blk
 {
-    unsigned int metadata;
+    unsigned char metadata;
     char data[SIZE];
 };
 
 struct bdev_metadata
 {
     struct block_device *bdev;
+    unsigned int bdev_usage;
     const char *path; // path to the block device to open
 };
 
