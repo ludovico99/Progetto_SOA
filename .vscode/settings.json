@@ -1,3 +1,8 @@
 {
-    "C_Cpp.errorSquiggles": "disabled"
+    "C_Cpp.errorSquiggles": "disabled",
+    "files.associations": {
+        "userdatamgmt_driver.h": "c",
+        "userdatamgmt_fs.h": "c",
+        "userdatamgmt.h": "c"
+    }
 }

@@ -42,7 +42,7 @@ redo:
     return 0;
 }
 
-void rcu_tree_init(struct blk_rcu_tree *t, struct bdev_metadata *bdev_md)
+void rcu_tree_init(struct blk_rcu_tree *t)
 {
 
     int i;
@@ -56,7 +56,6 @@ void rcu_tree_init(struct blk_rcu_tree *t, struct bdev_metadata *bdev_md)
         t->standing[i] = 0x0;
     }
     t->head = NULL;
-    t->bdev_md = bdev_md;
     spin_lock_init(&t->write_lock);
     // the_daemon = kthread_create(house_keeper, NULL, name);
 
@@ -118,6 +117,7 @@ void insert(struct blk_element **root, struct blk_element *newNode)
         // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
         insert(&((*root)->left), newNode);
     }
+   
 }
 
 // void stampa_albero(struct blk_element *root)
@@ -132,22 +132,22 @@ void insert(struct blk_element **root, struct blk_element *newNode)
 
 
 static void free_tree(struct blk_element *root)
-{
-    if (root == NULL)
-    {
+{      
+     if (root == NULL)
+    {   
         return;
     }
-
+   
     free_tree(root->left);
     free_tree(root->right);
 
-    kfree(root -> blk);
-    kfree(root);
+    //kfree(root -> blk);
+    kfree (root);
 }
 
 void free_structs(struct blk_rcu_tree *tree)
 {
-
-    kfree(tree->bdev_md);
     free_tree(tree->head);
+    kfree(tree);
+
 }

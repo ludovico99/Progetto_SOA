@@ -48,12 +48,12 @@ struct blk_rcu_tree
     int next_epoch_index;                                        // index of the next epoch
     spinlock_t write_lock;                                       // write lock to be acquired in order to modify the shared data structure
     struct blk_element *head;                                    // pointer to the shared data structure
-    struct bdev_metadata *bdev_md __attribute__((aligned(64)));  // Metadata of the block device
 } __attribute__((aligned(64)));
 
-extern void rcu_tree_init(struct blk_rcu_tree *, struct bdev_metadata *);
+extern void rcu_tree_init(struct blk_rcu_tree *);
 extern struct blk_element *lookup(struct blk_element *, int);
 extern void insert(struct blk_element **, struct blk_element *);
-extern void stampa_albero(struct blk_element *root);
-extern void free_structs(struct blk_rcu_tree*);
+// extern void stampa_albero(struct blk_element *root);
+extern void free_structs(struct blk_rcu_tree *);
+
 #endif

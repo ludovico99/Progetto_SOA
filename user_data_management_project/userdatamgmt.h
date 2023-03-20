@@ -36,5 +36,6 @@
 #define set_invalid(i) (unsigned char)i & (~METADATA_MASK)
 #define get_validity(i) ((unsigned char)(i) >> (sizeof(unsigned char)*8 - 1))
 
-extern struct blk_rcu_tree the_tree;
+extern struct blk_rcu_tree **the_tree;
+extern struct bdev_metadata bdev_md;
 #endif

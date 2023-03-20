@@ -25,13 +25,9 @@
 #include <asm/io.h>
 #include <linux/syscalls.h>
 
-#include <linux/blk_types.h>
-#include <linux/blkdev.h>
-
 #include "userdatamgmt_fs.h"
 #include "../userdatamgmt_driver.h"
 
-struct blk_rcu_tree the_tree;
 int mounted = 0;
 
 static struct super_operations my_super_ops = {};
@@ -122,10 +118,6 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
 
 static void userdatafs_kill_superblock(struct super_block *s)
 {
-    int i = 0;
-    int offset;
-    struct blk_element *elem;
-    struct buffer_head *bh;
     wait_queue_head_t unmount_queue; 
     int mnt = -1;
     mnt = __sync_val_compare_and_swap(&mounted, 1, 0);
@@ -135,29 +127,11 @@ static void userdatafs_kill_superblock(struct super_block *s)
         return;
     }
 
-    printk("%s: waiting the pending threads (%ld)...", MOD_NAME, the_tree.bdev_md -> bdev_usage);
-    wait_event_interruptible(unmount_queue, the_tree.bdev_md -> bdev_usage == 0);
-    // Concurrency is avoided thanks to previous locked CAS
-    // for (i = 0; i < NBLOCKS; i++)
-    // {
-    //     offset = get_offset(i);
-    //     bh = (struct buffer_head *)sb_bread(s, offset);
-    //     if (!bh)
-    //     {
-    //         printk("%s: error in retrieving the block at offset %d (index %d) in the device", MOD_NAME, offset, i);
-    //         return;
-    //     }
+    printk("%s: waiting the pending threads (%d)...", MOD_NAME, bdev_md.bdev_usage);
 
-    //     AUDIT printk("%s: Flushing block at offset %d (index %d) into the device", MOD_NAME, offset, i);
-    //     elem = lookup(the_tree.head, i);
-    //     if (elem->dirtiness)
-    //         mark_buffer_dirty(bh);
-    //     brelse(bh);
-    // }
+    wait_event_interruptible(unmount_queue, bdev_md.bdev_usage == 0);
+
     kill_block_super(s);
-    AUDIT printk("%s: freeing the struct allocated in the kernel memory\n",MOD_NAME);
-    free_structs(&the_tree);
-
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
 }
@@ -167,12 +141,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
 {
 
     struct dentry *ret;
-    struct blk_element *blk_elem = NULL;
-    struct bdev_metadata *bdev_md = NULL;
-    struct buffer_head *bh = NULL;
-    int i = 0;
     int mnt;
-    int offset = 0;
 
     mnt = __sync_val_compare_and_swap(&mounted, 0, 1);
     if (mnt == 1)
@@ -188,59 +157,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
     else
     {
         printk("%s: userdatafs is succesfully mounted on from device %s\n", MOD_NAME, dev_name);
-        // initiliazation of the RCU tree
-
-        // Start filling the block device representation in RAM
-        bdev_md = (struct bdev_metadata *)kzalloc(sizeof(struct bdev_metadata), GFP_KERNEL);
-        if (!bdev_md)
-        {
-            printk("%s: error allocationg bdev_metadata struct\n", MOD_NAME);
-            return ERR_PTR(-ENOMEM);
-        }
-
-        bdev_md->bdev = blkdev_get_by_path(dev_name, FMODE_READ | FMODE_WRITE, NULL);
-        if (bdev_md->bdev == NULL)
-        {
-            kfree(bdev_md);
-            printk("%s: Unable to get the struct block_device for %s", MOD_NAME, dev_name);
-            return ERR_PTR(-EINVAL);
-        }
-        bdev_md->path = dev_name;
-        rcu_tree_init(&the_tree, bdev_md);
-        // Initialization of struct blk_metadata
-        for (i = 0; i < NBLOCKS; i++)
-        {
-
-            offset = get_offset(i);
-            bh = (struct buffer_head *)sb_bread((bdev_md->bdev)->bd_super, offset);
-            if (!bh)
-            {
-
-                printk("%s: error retrieving the block at offset %d\n", MOD_NAME, offset);
-                return ERR_PTR(-EIO);
-            }
-            if (bh->b_data != NULL)
-            {
-                AUDIT printk("%s: retrieved the block at offset %d (index %d)\n", MOD_NAME, offset, i);
-                blk_elem = (struct blk_element *)kzalloc(sizeof(struct blk_element), GFP_KERNEL);
-
-                if (!blk_elem)
-                {
-                    free_structs(&the_tree);
-                    printk("%s: error allocationg blk_element struct\n", MOD_NAME);
-                    return ERR_PTR(-ENOMEM);
-                }
-
-                blk_elem->blk = (struct blk *)bh->b_data;
-                blk_elem->index = i;
-
-                AUDIT printk("%s: Block at offset %d (index %d) is %d (1 stays for valid) contains the message = %s\n", MOD_NAME, offset, i, get_validity(blk_elem->blk->metadata),blk_elem->blk->data);
-
-                insert(&the_tree.head, blk_elem);
-                // AUDIT printk("%s: Block at index i contains: %s",MOD_NAME, lookup(the_tree.head, i)->blk->data);
-                brelse(bh);
-            }
-        }
+       
     }
     return ret;
 }
