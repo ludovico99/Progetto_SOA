@@ -18,7 +18,7 @@
 #define UNIQUE_FILE_NAME "the-file"
 
 #define EPOCHS (2) //we have the current and the past epoch only
-#define MD_SIZE sizeof(unsigned char)
+#define MD_SIZE sizeof(uint16_t)
 #define SIZE (BLK_SIZE - MD_SIZE)
 #define SYNC_FLUSH 
 #define NBLOCKS 10
@@ -31,11 +31,15 @@
 #define MASK 0x8000000000000000
 //#define get_index(my_epoch) (my_epoch & MASK) ? 1 : 0
 
-#define METADATA_MASK 0x80
-#define set_valid(i) ((unsigned char)i | METADATA_MASK)
-#define set_invalid(i) (unsigned char)i & (~METADATA_MASK)
-#define get_validity(i) ((unsigned char)(i) >> (sizeof(unsigned char)*8 - 1))
+#define VALIDITY_MASK 0x8000
+#define set_valid(i) (uint16_t)i | (VALIDITY_MASK)
+#define set_invalid(i) (uint16_t)i & (~VALIDITY_MASK)
+#define get_validity(i) ((uint16_t)(i) >> (sizeof(uint16_t)*8 - 1))
 
-extern struct blk_rcu_tree **the_tree;
+#define LEN_MASK 0xF000
+#define get_length(i) ((uint16_t)(i) & (~LEN_MASK))
+#define set_length(mask,val) ((uint16_t)(mask) & (VALIDITY_MASK)) | (((uint16_t)val) & (~LEN_MASK))
+
+extern struct blk_rcu_tree the_tree;
 extern struct bdev_metadata bdev_md;
 #endif

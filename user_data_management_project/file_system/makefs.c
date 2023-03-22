@@ -16,7 +16,7 @@
 */
 
 char* testo[] = {
-"I have a dream  - Martin Luther King Jr.",
+"I have a dream  - Martin Luther King Jr",
 "Ask not what your country can do for you, ask what you can do for your country  - John F. Kennedy",
 "All men are created equal - Thomas Jefferson",
 "The only thing we have to fear is fear itself - Franklin D. Roosevelt",
@@ -46,7 +46,8 @@ int main(int argc, char *argv[])
 	struct userdatafs_inode file_inode;
 	struct userdatafs_dir_record record;
 	char *block_padding;
-	unsigned char metadata = 0x1 << ((sizeof(unsigned char))*8 - 1);
+	//uint16_t metadata = 0x1 << ((sizeof(uint16_t))*8 - 1);
+	uint16_t metadata = 0x0;
 
 	char *file_body = "Wathever content you would like.\n"; // this is the default content of the unique file
 
@@ -112,8 +113,8 @@ int main(int argc, char *argv[])
 
 	// write file datablocks
 	for (int i = 0; i < NBLOCKS; i++)
-	{
-		if (MD_SIZE + strlen(testo[i]) > BLK_SIZE)
+	{	
+		if (MD_SIZE + strlen(testo[i]) + 1 > BLK_SIZE)
 		{
 			printf("The block is too small");
 			return -1;
@@ -125,8 +126,9 @@ int main(int argc, char *argv[])
 	
 			metadata = set_valid(metadata);
 		}
+		metadata = set_length(metadata, strlen(testo[i]) + 1);
 		ret = write(fd, &metadata, MD_SIZE);
-		printf("Metadata: %d\n", get_validity(metadata));
+		printf("Metadata: %x\n", metadata);
 		if (ret != MD_SIZE)
 		{
 			printf("Writing the metadata has failed.\n");
@@ -134,7 +136,7 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
-		nbytes = strlen(testo[i]);
+		nbytes = strlen(testo[i]) + 1;
 		ret = write(fd, testo[i], nbytes);
 		if (ret != nbytes)
 		{

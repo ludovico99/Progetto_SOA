@@ -141,7 +141,7 @@ static void free_tree(struct blk_element *root)
     free_tree(root->left);
     free_tree(root->right);
 
-    //kfree(root -> blk);
+    kfree(root -> blk);
     kfree (root);
 }
 

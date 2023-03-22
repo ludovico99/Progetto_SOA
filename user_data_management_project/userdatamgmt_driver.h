@@ -29,8 +29,8 @@ struct blk_element
 };
 
 struct blk
-{
-    unsigned char metadata;
+{   
+    uint16_t metadata;
     char data[SIZE];
 };
 
