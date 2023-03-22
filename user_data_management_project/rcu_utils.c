@@ -46,8 +46,8 @@ void rcu_tree_init(struct blk_rcu_tree *t)
 {
 
     int i;
-    char name[128] = "the_daemon";
-    struct task_struct *the_daemon;
+    // char name[128] = "the_daemon";
+    // struct task_struct *the_daemon;
 
     t->epoch = 0x0;
     t->next_epoch_index = 0x1;
@@ -141,7 +141,6 @@ static void free_tree(struct blk_element *root)
     free_tree(root->left);
     free_tree(root->right);
 
-    kfree(root -> blk);
     kfree (root);
 }
 

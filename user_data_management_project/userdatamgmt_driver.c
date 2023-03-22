@@ -134,6 +134,8 @@ long sys_invalidate_data = (unsigned long)__x64_sys_invalidate_data;
 static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
 {
     loff_t *my_off_ptr = get_off();
+    int str_len = 0;
+    char * buff;
     struct buffer_head *bh = NULL;
     struct blk *blk = NULL;
     struct inode *the_inode = filp->f_inode;
@@ -144,20 +146,21 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     loff_t offset;
     int block_to_read; // index of the block to be read from device
 
-    AUDIT printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld)", MOD_NAME, len, *off, file_size);
+    AUDIT printk("%s: Read operation called with len %ld - and offset %lld (the current file size is %lld)", MOD_NAME, len, *off, file_size);
     // check that *off is within boundaries
     *my_off_ptr = *off; // In this way each CPU has its own private copy and *off can't be changed concurrently
     if (*my_off_ptr >= file_size)
     {
         return 0;
     }
-    else if (*my_off_ptr + len > file_size)
-        len = file_size - *my_off_ptr;
+
 
     // compute the actual index of the the block to be read from device
     block_to_read = *my_off_ptr / BLK_SIZE + 2; // the value 2 accounts for superblock and file-inode on device
 
-    AUDIT printk("%s: read operation must access block %d of the device", MOD_NAME, block_to_read);
+    if (block_to_read > NBLOCKS) return 0; //Consistency check
+    
+    AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
     
     bh = (struct buffer_head *)sb_bread(sb, block_to_read);
     if (!bh)
@@ -165,30 +168,37 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         AUDIT printk("%s: Error in retrieving the block %d", MOD_NAME, block_to_read);
         return -EIO;
     }
-    blk = (struct blk *)bh->b_data;
-    len = get_length(blk->metadata);
     
-     // determine the block level offset for the operation
-    offset = *my_off_ptr % BLK_SIZE;
-    // just read stuff in a single block - residuals will be managed at the application level
-    if (offset + len > BLK_SIZE)
-        len = BLK_SIZE - offset;
-    //blk = lookup(the_tree[*index]->head, get_index(block_to_read))->blk;
+    blk = (struct blk *)bh->b_data;
+
     if (blk != NULL && get_validity(blk->metadata))
-    {
-        AUDIT printk("%s: The block at offset %d is valid", MOD_NAME, block_to_read);
-        ret = copy_to_user(buf, blk + offset + MD_SIZE, len);
-        // if (ret == get_length(blk->metadata)) *my_off_ptr += BLK_SIZE - ret - sizeof(blk->metadata);
-        // else *my_off_ptr += get_length(blk->metadata) - ret;
+    {   
+        str_len = get_length(blk->metadata);
+        AUDIT printk ("%s: Block at index %d has message with length %d", MOD_NAME, block_to_read, str_len);
+        offset = *my_off_ptr % BLK_SIZE; //Residual
 
-        *my_off_ptr += BLK_SIZE - ret - MD_SIZE;
+        AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, block_to_read, offset, str_len - offset);
+        if (offset != 0 && offset < block_to_read * BLK_SIZE + MD_SIZE + str_len) len = str_len - offset; 
+        else len = str_len;
+        
+        if (*my_off_ptr + len > file_size) {
+            *my_off_ptr = file_size; 
+            goto exit;
+        }
+
+        // strncpy(buff, bh->b_data, lenght);
+        // temp_buf[lenght] = '\n';
+
+        ret = copy_to_user(buf, blk->data + offset, len);
+        if (ret == 0) *my_off_ptr += BLK_SIZE - offset;
+        else *my_off_ptr += len - ret;
     }
-    else
-        *my_off_ptr += BLK_SIZE;
+    else  *my_off_ptr += BLK_SIZE;
 
-    brelse(bh);
+exit:
     *off = *my_off_ptr;
-    return len - ret;
+    brelse(bh);
+    return file_size - *off;
 }
 
 static int dev_release(struct inode *inode, struct file *filp)
@@ -197,6 +207,7 @@ static int dev_release(struct inode *inode, struct file *filp)
     AUDIT printk("%s: Device release has been invoked: the thread %d trying to release the device file\n ", MOD_NAME, current->pid);
     if (bdev_md.bdev == NULL)
     {
+        __sync_fetch_and_sub(&(bdev_md.bdev_usage), 1);
         printk("%s: Consistency check: the device is not mounted", MOD_NAME);
         return -ENODEV;
     }
@@ -211,6 +222,7 @@ static int dev_open(struct inode *inode, struct file *filp)
 
     if (filp->f_mode & FMODE_WRITE)
     {
+        __sync_fetch_and_sub(&(bdev_md.bdev_usage), 1);
         printk("%s: Write operation not allowed", MOD_NAME);
         return -EROFS;
     }
