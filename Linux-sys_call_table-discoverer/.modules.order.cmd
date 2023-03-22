@@ -1,1 +1,0 @@
-cmd_/home/ludovico99/Scrivania/Progetto_SOA/Linux-sys_call_table-discoverer/modules.order := {   echo /home/ludovico99/Scrivania/Progetto_SOA/Linux-sys_call_table-discoverer/the_usctm.ko; :; } | awk '!x[$$0]++' - > /home/ludovico99/Scrivania/Progetto_SOA/Linux-sys_call_table-discoverer/modules.order
