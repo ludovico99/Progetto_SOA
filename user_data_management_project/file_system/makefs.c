@@ -114,19 +114,19 @@ int main(int argc, char *argv[])
 	// write file datablocks
 	for (int i = 0; i < NBLOCKS; i++)
 	{	
-		if (MD_SIZE + strlen(testo[i]) + 1 > BLK_SIZE)
+		if (MD_SIZE + strlen(testo[i])> BLK_SIZE)
 		{
 			printf("The block is too small");
 			return -1;
 		}
-		if (i%2 == 0) {
-			metadata = set_invalid(metadata);
-		}
-		else {
+		// if (i%2 == 0) {
+		// 	metadata = set_invalid(metadata);
+		// }
+		// else {
 	
 			metadata = set_valid(metadata);
-		}
-		metadata = set_length(metadata, strlen(testo[i]) + 1);
+		//}
+		metadata = set_length(metadata, strlen(testo[i]));
 		ret = write(fd, &metadata, MD_SIZE);
 		printf("Metadata: %x\n", metadata);
 		if (ret != MD_SIZE)
@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
-		nbytes = strlen(testo[i]) + 1 ;
+		nbytes = strlen(testo[i]);
 		ret = write(fd, testo[i], nbytes);
 		if (ret != nbytes)
 		{

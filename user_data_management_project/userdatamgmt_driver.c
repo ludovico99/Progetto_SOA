@@ -74,6 +74,8 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     // }
     // my_epoch = __sync_fetch_and_add(epoch,1)
 
+    //TODO
+
     // index = (my_epoch & MASK) ? 1 : 0; //get_index(my_epoch);
     // __sync_fetch_and_add(&the_tree->standing[index],1);
 
@@ -98,6 +100,9 @@ asmlinkage long sys_invalidate_data(int offset)
     // int i = 0;
     // struct blk_element* elem = NULL;
     printk("%s: SYS_INVALIDATE_DATA \n", MOD_NAME);
+    //pthread_spin_lock(&(l->write_lock));
+
+	//TODO
     //  for (i = 0; i < NBLOCKS; i++)
     // {
     //     offset = get_offset(i);
@@ -122,6 +127,9 @@ asmlinkage long sys_invalidate_data(int offset)
     //     brelse(bh);
     // }
 
+	//pthread_spin_unlock(&l->write_lock);
+    
+
 
     return 0;
 }
@@ -134,11 +142,12 @@ long sys_invalidate_data = (unsigned long)__x64_sys_invalidate_data;
 static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
 {
     loff_t *my_off_ptr = get_off();
-    int str_len = 0;
+    int str_len = 0, index;
     struct buffer_head *bh = NULL;
-    struct blk *blk = NULL;
+    struct dev_blk *blk = NULL;
     struct inode *the_inode = filp->f_inode;
     uint64_t file_size = the_inode->i_size;
+    unsigned long my_epoch;
     //const char *dev_name = filp->f_path.dentry->d_iname;
     struct super_block *sb = filp->f_path.dentry->d_inode->i_sb;
     int ret = 0;
@@ -146,6 +155,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     int block_to_read; // index of the block to be read from device
 
     AUDIT printk("%s: Read operation called with len %ld - and offset %lld (the current file size is %lld)", MOD_NAME, len, *off, file_size);
+    
     // check that *off is within boundaries
     *my_off_ptr = *off; // In this way each CPU has its own private copy and *off can't be changed concurrently
     if (*my_off_ptr >= file_size)
@@ -153,14 +163,22 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         return 0;
     }
 
-
     // compute the actual index of the the block to be read from device
     block_to_read = *my_off_ptr / BLK_SIZE + 2; // the value 2 accounts for superblock and file-inode on device
 
     if (block_to_read > NBLOCKS + 2) return 0; //Consistency check
-    
+
+    my_epoch = __sync_fetch_and_add(&(the_tree.epoch),1);
     AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
-    
+
+    if (!get_validity(lookup(the_tree.head, get_index(block_to_read))->metadata)) {
+        AUDIT printk("%s: The block at index %d is invalid", MOD_NAME, block_to_read);
+        len = 1;
+        ret = copy_to_user(buf, "", len);
+        *my_off_ptr += BLK_SIZE;
+        goto exit;
+    }
+
     bh = (struct buffer_head *)sb_bread(sb, block_to_read);
     if (!bh)
     {
@@ -168,17 +186,18 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         return -EIO;
     }
     
-    blk = (struct blk *)bh->b_data;
+    blk = (struct dev_blk *)bh->b_data;
 
-    if (blk != NULL && get_validity(blk->metadata))
+    if (blk != NULL)
     {   
         str_len = get_length(blk->metadata);
         AUDIT printk ("%s: Block at index %d has message with length %d", MOD_NAME, block_to_read, str_len);
         offset = *my_off_ptr % BLK_SIZE; //Residual
 
         AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, block_to_read, offset, str_len - offset);
+        
         if (offset == 0) len = str_len;
-        else if (offset < block_to_read * BLK_SIZE + MD_SIZE + str_len) len = str_len - offset; 
+        else if (offset < MD_SIZE + str_len) len = str_len - offset; 
         else len = 0;
 
         ret = copy_to_user(buf, blk->data + offset, len);
@@ -187,9 +206,12 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     }
     else  *my_off_ptr += BLK_SIZE;
 
-    *off = *my_off_ptr;
     brelse(bh);
-    return file_size - *off;
+exit: 
+    *off = *my_off_ptr;
+    index = (my_epoch & MASK) ? 1 : 0;
+    __sync_fetch_and_add(&(the_tree.standing[index]),1);
+    return len - ret;
 }
 
 static int dev_release(struct inode *inode, struct file *filp)

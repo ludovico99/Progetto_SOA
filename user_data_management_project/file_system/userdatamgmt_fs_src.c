@@ -196,7 +196,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     return ERR_PTR(-ENOMEM);
                 }
 
-                blk_elem->blk = (struct blk *)bh->b_data;
+                blk_elem->metadata = ((struct dev_blk *)bh->b_data)->metadata;
                 blk_elem->index = i;
 
                 // AUDIT printk("%s: Block at offset %d (index %d) is %d (1 stays for valid) contains the message = %s\n", MOD_NAME, offset, i, get_validity(blk_elem->blk->metadata), blk_elem->blk->data);

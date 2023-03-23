@@ -25,10 +25,11 @@ struct blk_element
     struct blk_element *left __attribute__((aligned(64)));
     unsigned int dirtiness; // if 1 the changes should be flushed into the device
     int index;
-    struct blk *blk;
+    uint16_t metadata;
+    //struct dev_blk *dev_blk;
 };
 
-struct blk
+struct dev_blk
 {   
     uint16_t metadata;
     char data[SIZE];

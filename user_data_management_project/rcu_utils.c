@@ -73,7 +73,6 @@ void rcu_tree_init(struct blk_rcu_tree *t)
 struct blk_element *lookup(struct blk_element *root, int index)
 {
 
-    // AUDIT printk("%s: lookup operation started for block at index %d", MOD_NAME, index);
     if (root == NULL)
     {
         return NULL;
