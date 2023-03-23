@@ -54,6 +54,6 @@ extern void rcu_tree_init(struct blk_rcu_tree *);
 extern struct blk_element *lookup(struct blk_element *, int);
 extern void insert(struct blk_element **, struct blk_element *);
 // extern void stampa_albero(struct blk_element *root);
-extern void free_structs(struct blk_rcu_tree *);
+extern void free_tree(struct blk_element *);
 
 #endif

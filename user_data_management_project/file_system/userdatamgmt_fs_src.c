@@ -137,7 +137,8 @@ static void userdatafs_kill_superblock(struct super_block *s)
     kill_block_super(s);
    
     AUDIT printk("%s: Freeing the struct allocated in the kernel memory", MOD_NAME);
-    free_structs(&the_tree);
+    free_tree(the_tree.head);
+    
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
 }

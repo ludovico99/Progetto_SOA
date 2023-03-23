@@ -2,6 +2,7 @@
 obj-m += progetto_soa.o 
 progetto_soa-objs += lib/scth.o userdatamgmt.o file_system/file.o file_system/dir.o rcu_utils.o
 NBLOCKS = 10
+TOT_BLOCKS = $(shell expr $(NBLOCKS) + 2)
 
 A = $(shell cat /sys/module/the_usctm/parameters/sys_call_table_address)
 
@@ -22,7 +23,7 @@ remove_progetto_soa:
 create-all:
 #	mknod $(dev) c 236 0
 
-	dd bs=4096 count=$(NBLOCKS) if=/dev/zero of=image
+	dd bs=4096 count=$(TOT_BLOCKS)  if=/dev/zero of=image
 	./file_system/makefs image
 	mkdir mount
 	

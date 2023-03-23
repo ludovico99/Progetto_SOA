@@ -6,7 +6,7 @@
 #include "linux/kthread.h"
 #include "userdatamgmt_driver.h"
 
-int house_keeper(void *the_tree)
+static int house_keeper(void *the_tree)
 {
 
     unsigned long last_epoch;
@@ -131,7 +131,7 @@ void insert(struct blk_element **root, struct blk_element *newNode)
 // }
 
 
-static void free_tree(struct blk_element *root)
+void free_tree(struct blk_element *root)
 {      
      if (root == NULL)
     {   
@@ -144,9 +144,3 @@ static void free_tree(struct blk_element *root)
     kfree (root);
 }
 
-void free_structs(struct blk_rcu_tree *tree)
-{
-    free_tree(tree->head);
-    kfree(tree);
-
-}

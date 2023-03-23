@@ -135,7 +135,6 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
 {
     loff_t *my_off_ptr = get_off();
     int str_len = 0;
-    char * buff;
     struct buffer_head *bh = NULL;
     struct blk *blk = NULL;
     struct inode *the_inode = filp->f_inode;
@@ -158,7 +157,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     // compute the actual index of the the block to be read from device
     block_to_read = *my_off_ptr / BLK_SIZE + 2; // the value 2 accounts for superblock and file-inode on device
 
-    if (block_to_read > NBLOCKS) return 0; //Consistency check
+    if (block_to_read > NBLOCKS + 2) return 0; //Consistency check
     
     AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
     
@@ -178,16 +177,9 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         offset = *my_off_ptr % BLK_SIZE; //Residual
 
         AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, block_to_read, offset, str_len - offset);
-        if (offset != 0 && offset < block_to_read * BLK_SIZE + MD_SIZE + str_len) len = str_len - offset; 
-        else len = str_len;
-        
-        if (*my_off_ptr + len > file_size) {
-            *my_off_ptr = file_size; 
-            goto exit;
-        }
-
-        // strncpy(buff, bh->b_data, lenght);
-        // temp_buf[lenght] = '\n';
+        if (offset == 0) len = str_len;
+        else if (offset < block_to_read * BLK_SIZE + MD_SIZE + str_len) len = str_len - offset; 
+        else len = 0;
 
         ret = copy_to_user(buf, blk->data + offset, len);
         if (ret == 0) *my_off_ptr += BLK_SIZE - offset;
@@ -195,7 +187,6 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     }
     else  *my_off_ptr += BLK_SIZE;
 
-exit:
     *off = *my_off_ptr;
     brelse(bh);
     return file_size - *off;

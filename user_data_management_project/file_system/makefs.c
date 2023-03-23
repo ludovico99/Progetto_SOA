@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
 	// write file datablocks
 	for (int i = 0; i < NBLOCKS; i++)
 	{	
-		if (MD_SIZE + strlen(testo[i]) + 1> BLK_SIZE)
+		if (MD_SIZE + strlen(testo[i]) + 1 > BLK_SIZE)
 		{
 			printf("The block is too small");
 			return -1;
