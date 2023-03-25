@@ -6,36 +6,35 @@
 #include "linux/kthread.h"
 #include "userdatamgmt_driver.h"
 
-static int house_keeper(void *the_tree)
+static int house_keeper(void *unused)
 {
 
     unsigned long last_epoch;
     unsigned long updated_epoch;
     unsigned long grace_period_threads;
     int index;
-
-    struct blk_rcu_tree *t = (struct blk_rcu_tree *)the_tree;
-
+    DECLARE_WAIT_QUEUE_HEAD(wait_queue);
+    if (mount_md.mount_point == NULL)
+        return -ENODEV;
 redo:
     msleep(PERIOD);
 
-    spin_lock(&t->write_lock);
+    spin_lock(&the_tree.write_lock);
 
-    updated_epoch = (t->next_epoch_index) ? MASK : 0;
+    updated_epoch = (the_tree.next_epoch_index) ? MASK : 0;
 
-    t->next_epoch_index += 1;
-    t->next_epoch_index %= 2;
+    the_tree.next_epoch_index += 1;
+    the_tree.next_epoch_index %= 2;
 
-    last_epoch = __atomic_exchange_n(&(t->epoch), updated_epoch, __ATOMIC_SEQ_CST);
+    last_epoch = __atomic_exchange_n(&(the_tree.epoch), updated_epoch, __ATOMIC_SEQ_CST);
     index = (last_epoch & MASK) ? 1 : 0;
     grace_period_threads = last_epoch & (~MASK);
 
     AUDIT printk("house keeping: waiting grace-full period (target index is %ld)\n", grace_period_threads);
-    while (t->standing[index] < grace_period_threads)
-        ;
-    t->standing[index] = 0;
+    wait_event_interruptible(wait_queue, the_tree.standing[index] >= grace_period_threads);
+    the_tree.standing[index] = 0;
 
-    spin_unlock(&t->write_lock);
+    spin_unlock(&the_tree.write_lock);
 
     goto redo;
 
@@ -46,8 +45,8 @@ void rcu_tree_init(struct blk_rcu_tree *t)
 {
 
     int i;
-    // char name[128] = "the_daemon";
-    // struct task_struct *the_daemon;
+    char name[128] = "the_daemon";
+    struct task_struct *the_daemon;
 
     t->epoch = 0x0;
     t->next_epoch_index = 0x1;
@@ -57,17 +56,18 @@ void rcu_tree_init(struct blk_rcu_tree *t)
     }
     t->head = NULL;
     spin_lock_init(&t->write_lock);
-    // the_daemon = kthread_create(house_keeper, NULL, name);
+    the_daemon = kthread_create(house_keeper, NULL, name);
 
-    // if(the_daemon) {
-    // 	wake_up_process(the_daemon);
-    //     printk("%s: RCU-tree house-keeper activated\n",MOD_NAME);
-    // }
+    if (the_daemon)
+    {
+        wake_up_process(the_daemon);
+        printk("%s: RCU-tree house-keeper activated\n", MOD_NAME);
+    }
 
-    // else{
-    //     AUDIT printk("%s: Kernel daemon initialization has failed \n",MOD_NAME);
-
-    //  }
+    else
+    {
+        AUDIT printk("%s: Kernel daemon initialization has failed \n", MOD_NAME);
+    }
 }
 
 struct blk_element *lookup(struct blk_element *root, int index)
@@ -118,9 +118,23 @@ void insert(struct blk_element **root, struct blk_element *newNode)
     }
 }
 
+// Trova il nodo con valore minimo nell'albero
+static struct blk_element *find_min(struct blk_element *node)
+{
+
+    struct blk_element *curr = node;
+
+    while (curr && curr->left != NULL)
+    {
+        curr = curr->left;
+    }
+    return curr;
+}
+
 // Funzione per eliminare un nodo con un dato index dall'albero binario
 struct blk_element *delete(struct blk_element *root, int index)
 {
+    struct blk_element *min_node = NULL;
     if (root == NULL)
     {
         return root;
@@ -128,45 +142,42 @@ struct blk_element *delete(struct blk_element *root, int index)
     if (index < root->index)
     {
         root->left = delete (root->left, index);
+        asm volatile("mfence"); // make it visible to readers
     }
     else if (index > root->index)
     {
         root->right = delete (root->right, index);
+        asm volatile("mfence"); // make it visible to readers
     }
     else
     {
         // Node to be deleted has 0 or 1 child
         if (root->left == NULL)
         {
-            struct Node *temp = root->right;
-            return temp;
+            return root->right;
         }
         else if (root->right == NULL)
         {
-            struct Node *temp = root->left;
-            return temp;
+            return root->left;
         }
         // Node to be deleted has 2 children
-        struct Node *min_node = root->right;
-        while (min_node->left != NULL)
-        {
-            min_node = min_node->left;
-        }
+        min_node = find_min(root->right);
         root->index = min_node->index;
         root->right = delete (root->right, min_node->index);
+        asm volatile("mfence"); // make it visible to readers
     }
     return root;
 }
 
-// void stampa_albero(struct blk_element *root)
-// {
-//     if (root != NULL)
-//     {
-//         stampa_albero(root->left);
-//         AUDIT printk("%d", root->index);
-//         stampa_albero(root->right);
-//     }
-// }
+void stampa_albero(struct blk_element *root)
+{
+    if (root != NULL)
+    {
+        stampa_albero(root->left);
+        AUDIT printk("%d", root->index);
+        stampa_albero(root->right);
+    }
+}
 
 void free_tree(struct blk_element *root)
 {

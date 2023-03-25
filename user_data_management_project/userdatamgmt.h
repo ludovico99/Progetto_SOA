@@ -22,7 +22,7 @@
 #define SIZE (BLK_SIZE - MD_SIZE)
 #define SYNC_FLUSH 
 #define NBLOCKS 10
-#define PERIOD 100
+#define PERIOD 1000
 
 #define get_index(offset)   ((offset) - 2)
 #define get_offset(index)   ((index) + 2)

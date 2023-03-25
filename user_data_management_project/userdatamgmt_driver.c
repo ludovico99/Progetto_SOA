@@ -78,6 +78,17 @@ asmlinkage long sys_put_data(char *source, ssize_t size)
 
     // filp_close(filp, NULL);
 
+    //  elem = lookup(the_tree.head, get_index(block_to_read));
+    // if (elem->dirtiness)
+    //     mark_buffer_dirty(bh);
+    // if (sync_dirty_buffer(bh) == 0)
+    // {
+    //     AUDIT printk("%s: SUCCESS IN SYNCHRONOUS WRITE", MODNAME);
+    // }
+    // else
+    //     printk("%s: FAILURE IN SYNCHRONOUS WRITE", MODNAME);
+    // brelse(bh);
+
     return 0;
 }
 
@@ -173,54 +184,83 @@ asmlinkage long sys_invalidate_data(int offset)
 {
 #endif
 
-    int offset = 0;
-    int i = 0;
-    struct blk_element *removed = NULL;
-	int grace_epoch;
-	unsigned long last_epoch;
-	unsigned long updated_epoch;
-	unsigned long grace_period_threads;
-	int index;
-    //wait_queue_head_t invalidate_queue;
+    struct buffer_head *bh;
+    struct blk_element *the_block = NULL;
+    struct dev_blk *blk = NULL;
+    unsigned long last_epoch;
+    unsigned long updated_epoch;
+    unsigned long grace_period_threads;
+    int index;
+    // wait_queue_head_t invalidate_queue;
     DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
     printk("%s: SYS_INVALIDATE_DATA \n", MOD_NAME);
 
+    if (offset > NBLOCKS - 1 || offset < 0)
+        return -EINVAL;
+
     spin_lock(&(the_tree.write_lock));
 
-    for (i = 0; i < NBLOCKS; i++)
-     {
-        offset = get_offset(i);
+    AUDIT printk("%s: Traverse the tree to find block at offset %d", MOD_NAME, offset);
+    
+    the_block = lookup(the_tree.head, offset);
+    //delete(the_tree.head, offset);
+   //stampa_albero(the_tree.head);
+    the_block->dirtiness = 1;
+    asm volatile("mfence"); // make it visible to readers
 
-        AUDIT printk("%s: Flushing block at offset %d (index %d) into the device", MOD_NAME, offset, i);
-        elem = lookup(the_tree.head, get_index(block_to_read));
-        if (elem->dirtiness)
-            mark_buffer_dirty(bh);
-        if (sync_dirty_buffer(bh) == 0)
-        {
-            AUDIT printk("%s: SUCCESS IN SYNCHRONOUS WRITE", MODNAME);
-        }
-        else
-            printk("%s: FAILURE IN SYNCHRONOUS WRITE", MODNAME);
-        brelse(bh);
+    if (!get_validity(the_block->metadata))
+    {
+        spin_unlock(&(the_tree.write_lock));
+        return -ENODATA;
     }
+    the_block->metadata = set_invalid(the_block->metadata);
+    asm volatile("mfence"); // make it visible to readers
 
-    last_epoch = __atomic_exchange_n (&(the_tree.epoch), updated_epoch, __ATOMIC_SEQ_CST); 
-	index = (last_epoch & MASK) ? 1 : 0; 
-	grace_period_threads = last_epoch & (~MASK);
+    // move to a new epoch - still under write lock
+    updated_epoch = (the_tree.next_epoch_index) ? MASK : 0;
 
-    AUDIT printk("%s: deletion: waiting grace-full period (target value is %d)\n", MOD_NAME, grace_period_threads);
+    the_tree.next_epoch_index += 1;
+    the_tree.next_epoch_index %= 2;
 
-    wait_event_interruptible(invalidate_queue, the_tree.pending[index] >= grace_period_threads);
-    while(the_tree.standing[index] < grace_period_threads);
-	the_tree.standing[index] = 0;
+    last_epoch = __atomic_exchange_n(&(the_tree.epoch), updated_epoch, __ATOMIC_SEQ_CST);
+    index = (last_epoch & MASK) ? 1 : 0;
+    grace_period_threads = last_epoch & (~MASK);
+
+    AUDIT printk("%s: Deletion: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
+
+    wait_event_interruptible(invalidate_queue, the_tree.standing[index] >= grace_period_threads);
+    the_tree.standing[index] = 0;
     spin_unlock((&the_tree.write_lock));
 
-    if(removed){
-		kfree(removed);
-		return 1;
-	}
+    //if (the_block) kfree(the_block);
+    
+    // FLUSHING METADATA CHANGES INTO THE DEVICE
+    if (!the_block->dirtiness) return 1;
+    printk("%s: Flushing metadata changes into the device",MOD_NAME);
+    bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, get_offset(offset));
+    if (!bh)
+    {
+        AUDIT printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
+        return -EIO;
+    }
+    blk = (struct dev_blk *)bh->b_data;
 
-    return 0;
+    if (blk != NULL)
+    {
+        memcpy(bh->b_data, &the_block->metadata, MD_SIZE);
+#ifndef SYNC_FLUSH
+        mark_buffer_dirty(bh);
+#else
+        if (sync_dirty_buffer(bh) == 0)
+        {
+            AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
+        }
+        else
+            printk("%s: Synchronous flush not succeded", MOD_NAME);
+#endif
+    }
+    brelse(bh);
+    return 1;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
@@ -346,16 +386,17 @@ static int dev_open(struct inode *inode, struct file *filp)
     return 0;
 }
 
-static loff_t dev_llseek(struct file *, loff_t off, int whence)
-{
-    AUDIT printk("%s: Device llseek has been invoked at offset %lld\n ", MOD_NAME, off);
+// static loff_t dev_llseek(struct file *, loff_t off, int whence)
+// {
+//     AUDIT printk("%s: Device llseek has been invoked at offset %lld\n ", MOD_NAME, off);
 
-    return off;
-}
+//     return off;
+// }
 
 const struct file_operations dev_fops = {
     .owner = THIS_MODULE,
     .read = dev_read,
     .release = dev_release,
     .open = dev_open,
-    .llseek = dev_llseek};
+    //.llseek = dev_llseek
+};

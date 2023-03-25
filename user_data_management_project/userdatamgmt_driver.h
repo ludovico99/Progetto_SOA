@@ -53,15 +53,15 @@ struct blk_rcu_tree
     unsigned long standing[EPOCHS] __attribute__((aligned(64))); // In memory alignment to reduce CC transactions
     unsigned long epoch __attribute__((aligned(64)));            // In memory alignment to reduce CC transactions
     int next_epoch_index;                                        // index of the next epoch
-    spinlock_t write_lock = SPINLOCK_UNLOCKED;                                       // write lock to be acquired in order to modify the shared data structure
+    spinlock_t write_lock;                                       // write lock to be acquired in order to modify the shared data structure
     struct blk_element *head;                                    // pointer to the shared data structure
 } __attribute__((aligned(64)));
 
 extern void rcu_tree_init(struct blk_rcu_tree *);
 extern struct blk_element *lookup(struct blk_element *, int);
 extern void insert(struct blk_element **, struct blk_element *);
-// extern void stampa_albero(struct blk_element *root);
+extern void stampa_albero(struct blk_element *root);
 extern void free_tree(struct blk_element *);
-extern struct blk_element* delete(struct blk_element*, int)
+extern struct blk_element* delete(struct blk_element*, int);
 
 #endif
