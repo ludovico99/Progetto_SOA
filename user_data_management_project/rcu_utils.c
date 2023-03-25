@@ -30,7 +30,7 @@ redo:
     index = (last_epoch & MASK) ? 1 : 0;
     grace_period_threads = last_epoch & (~MASK);
 
-    AUDIT printk("house keeping: waiting grace-full period (target value is %ld)\n", grace_period_threads);
+    AUDIT printk("house keeping: waiting grace-full period (target index is %ld)\n", grace_period_threads);
     while (t->standing[index] < grace_period_threads)
         ;
     t->standing[index] = 0;
@@ -116,7 +116,46 @@ void insert(struct blk_element **root, struct blk_element *newNode)
         // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
         insert(&((*root)->left), newNode);
     }
-   
+}
+
+// Funzione per eliminare un nodo con un dato index dall'albero binario
+struct blk_element *delete(struct blk_element *root, int index)
+{
+    if (root == NULL)
+    {
+        return root;
+    }
+    if (index < root->index)
+    {
+        root->left = delete (root->left, index);
+    }
+    else if (index > root->index)
+    {
+        root->right = delete (root->right, index);
+    }
+    else
+    {
+        // Node to be deleted has 0 or 1 child
+        if (root->left == NULL)
+        {
+            struct Node *temp = root->right;
+            return temp;
+        }
+        else if (root->right == NULL)
+        {
+            struct Node *temp = root->left;
+            return temp;
+        }
+        // Node to be deleted has 2 children
+        struct Node *min_node = root->right;
+        while (min_node->left != NULL)
+        {
+            min_node = min_node->left;
+        }
+        root->index = min_node->index;
+        root->right = delete (root->right, min_node->index);
+    }
+    return root;
 }
 
 // void stampa_albero(struct blk_element *root)
@@ -129,17 +168,15 @@ void insert(struct blk_element **root, struct blk_element *newNode)
 //     }
 // }
 
-
 void free_tree(struct blk_element *root)
-{      
-     if (root == NULL)
-    {   
+{
+    if (root == NULL)
+    {
         return;
     }
-   
+
     free_tree(root->left);
     free_tree(root->right);
 
-    kfree (root);
+    kfree(root);
 }
-

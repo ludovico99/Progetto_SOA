@@ -3,6 +3,9 @@
     "files.associations": {
         "userdatamgmt_driver.h": "c",
         "userdatamgmt_fs.h": "c",
-        "userdatamgmt.h": "c"
+        "userdatamgmt.h": "c",
+        "scth.h": "c",
+        "typeinfo": "c",
+        "type_traits": "c"
     }
 }

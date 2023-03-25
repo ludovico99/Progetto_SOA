@@ -33,11 +33,11 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Francesco Quaglia <francesco.quaglia@uniroma2.it>");
 MODULE_DESCRIPTION("BLOCK-LEVEL DATA MANAGEMENT SERVICE");
 
-//static int Major;            /* Major number assigned to char device driver */
-
 unsigned long the_syscall_table = 0x0;
 module_param(the_syscall_table, ulong, 0660);
 
+char mount_pt[255]  = "/";
+module_param_string(mount_point, mount_pt, 255, 0660);
 
 unsigned long the_ni_syscall;
 

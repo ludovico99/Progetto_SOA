@@ -36,10 +36,18 @@
 #define set_invalid(i) (uint16_t)i & (~VALIDITY_MASK)
 #define get_validity(i) ((uint16_t)(i) >> (sizeof(uint16_t)*8 - 1))
 
+#define FREE_MASK 0x4000
+#define set_free(i) (uint16_t)i | (FREE_MASK)
+#define set_not_free(i) (uint16_t)i & (~FREE_MASK)
+#define get_free(i) ((uint16_t)(i) >> (sizeof(uint16_t)*8 - 2)) & 0x1
+
+
 #define LEN_MASK 0xF000
 #define get_length(i) ((uint16_t)(i) & (~LEN_MASK))
-#define set_length(mask,val) ((uint16_t)(mask) & (VALIDITY_MASK)) | (((uint16_t)val) & (~LEN_MASK))
+#define set_length(mask,val) ((uint16_t)(mask) & (VALIDITY_MASK | FREE_MASK)) | (((uint16_t)val) & (~LEN_MASK))
 
 extern struct blk_rcu_tree the_tree;
 extern struct bdev_metadata bdev_md;
+extern struct mount_metadata mount_md;
+extern char mount_pt[255];
 #endif

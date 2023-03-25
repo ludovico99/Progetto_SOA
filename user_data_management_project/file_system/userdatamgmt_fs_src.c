@@ -27,11 +27,14 @@
 
 #include <linux/blk_types.h>
 #include <linux/blkdev.h>
+#include <linux/fs.h>
+#include <linux/namei.h>
 
 #include "userdatamgmt_fs.h"
 #include "../userdatamgmt_driver.h"
 
-int mounted = 0;
+struct bdev_metadata bdev_md = {NULL, 0, NULL};
+struct mount_metadata mount_md = {0, "/"};
 
 static struct super_operations my_super_ops = {};
 
@@ -115,24 +118,24 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
 
     // unlock the inode to make it usable
     unlock_new_inode(root_inode);
-
     return 0;
 }
 
 static void userdatafs_kill_superblock(struct super_block *s)
 {
-    wait_queue_head_t unmount_queue;
+    //wait_queue_head_t unmount_queue;
+    DECLARE_WAIT_QUEUE_HEAD(unmount_queue);
     int mnt = -1;
-    mnt = __sync_val_compare_and_swap(&mounted, 1, 0);
+    mnt = __sync_val_compare_and_swap(&mount_md.mounted, 1, 0);
     if (mnt == 0)
     {
         printk("%s: filesystem has been already unmounted\n", MOD_NAME);
         return;
     }
 
-    printk("%s: waiting the pending threads (%d)...", MOD_NAME, bdev_md.bdev_usage);
-    //AUDIT printk("%s: bdev_usage is %d",MOD_NAME, bdev_md.bdev_usage);
-    wait_event_interruptible(unmount_queue, bdev_md.bdev_usage == 0);
+    printk("%s: waiting the pending threads (%d)...", MOD_NAME, bdev_md.open_count);
+    //AUDIT printk("%s: open_count is %d",MOD_NAME, bdev_md.open_count);
+    wait_event_interruptible(unmount_queue, bdev_md.open_count == 0);
 
     kill_block_super(s);
    
@@ -142,6 +145,7 @@ static void userdatafs_kill_superblock(struct super_block *s)
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
 }
+
 
 // called on file system mounting
 struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data)
@@ -154,7 +158,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
     struct buffer_head* bh;
     struct blk_element * blk_elem;
 
-    mnt = __sync_val_compare_and_swap(&mounted, 0, 1);
+    mnt = __sync_val_compare_and_swap(&mount_md.mounted, 0, 1);
     if (mnt == 1)
     {
         printk("%s: the device driver can support only a single mount point at time\n", MOD_NAME);
@@ -162,12 +166,14 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
     }
 
     ret = mount_bdev(fs_type, flags, dev_name, data, userdatafs_fill_super);
-
+    
     if (unlikely(IS_ERR(ret)))
         printk("%s: error mounting userdatafs", MOD_NAME);
     else
-    {
-        printk("%s: userdatafs is succesfully mounted on from device %s\n", MOD_NAME, dev_name);
+    {   
+        mount_md.mount_point = mount_pt;
+        AUDIT printk("%s: userdatafs is succesfully mounted on from device %s and mount directory %s\n", MOD_NAME, dev_name, mount_md.mount_point );
+        
         // initiliazation of the RCU tree
         // Start filling the block device representation in RAM
 

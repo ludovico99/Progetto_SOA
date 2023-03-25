@@ -31,8 +31,6 @@
 
 struct blk_rcu_tree the_tree;
 
-struct bdev_metadata bdev_md = {NULL, 0, NULL};
-
 DEFINE_PER_CPU(loff_t, my_off);
 
 static __always_inline loff_t *get_off(void)
@@ -49,6 +47,36 @@ asmlinkage long sys_put_data(char *source, ssize_t size)
 #endif
 
     printk("%s: SYS_PUT_DATA \n", MOD_NAME);
+    // loff_t offset = 100; // l'offset dal quale iniziare l'apertura del file
+    // struct file *filp = filp_open("/path/to/file", O_RDONLY, 0);
+    // if (IS_ERR(filp)) {
+    // printk(KERN_ALERT "Failed to open file\n");
+    // return PTR_ERR(filp);
+    // }
+
+    // if (filp->f_op && filp->f_op->read) {
+    // char buf[256];
+    // memset(buf, 0, sizeof(buf));
+    // loff_t pos = filp->f_pos;
+    // mm_segment_t oldfs = get_fs();
+    // set_fs(KERNEL_DS);
+
+    // if (vfs_setpos(filp, offset, pos) == 0) {
+    //     int ret = filp->f_op->read(filp, buf, sizeof(buf), &filp->f_pos);
+    //     if (ret >= 0) {
+    //         printk(KERN_INFO "Read %d bytes from file\n", ret);
+    //         // fai qualcosa con il contenuto del file letto
+    //     } else {
+    //         printk(KERN_ALERT "Failed to read from file\n");
+    //     }
+    // } else {
+    //     printk(KERN_ALERT "Failed to set file position\n");
+    // }
+
+    // set_fs(oldfs);
+    // }
+
+    // filp_close(filp, NULL);
 
     return 0;
 }
@@ -65,23 +93,71 @@ __SYSCALL_DEFINEx(3, _get_data, int, offset, char *, destination, ssize_t, size)
 asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 {
 #endif
-    // unsigned long * epoch = &(the_tree->epoch);
-    // unsigned long my_epoch;
-
-    //  if (the_tree == NULL){
-    //     printk("%s: Consistency check on the_tree struct", MODNAME);
-    //     return -ENODEV;
-    // }
-    // my_epoch = __sync_fetch_and_add(epoch,1)
-
-    //TODO
-
-    // index = (my_epoch & MASK) ? 1 : 0; //get_index(my_epoch);
-    // __sync_fetch_and_add(&the_tree->standing[index],1);
+    unsigned long *epoch;
+    unsigned long my_epoch;
+    struct blk_element *the_block;
+    char *file_path;
+    int len = strlen(mount_md.mount_point);
+    char *mount_point;
+    struct file *filp;
+    ssize_t msg_len = -1;
+    int ret = 0;
+    int index;
 
     printk("%s: SYS_GET_DATA \n", MOD_NAME);
+    if (!mount_md.mounted)
+    {
+        printk("%s: The device is not mounted", MOD_NAME);
+        return -ENODEV;
+    }
 
-    return 0;
+    if (size > SIZE)
+        size = SIZE;
+    if (size < 0 || offset > NBLOCKS - 1 || offset < 0)
+        return -EINVAL;
+    epoch = &the_tree.epoch;
+    my_epoch = __sync_fetch_and_add(epoch, 1);
+
+    the_block = lookup(the_tree.head, offset);
+
+    if (the_block == NULL)
+        return -EINVAL;
+    msg_len = get_length(the_block->metadata);
+
+    if (size > msg_len)
+        size = msg_len;
+    if (!get_validity(the_block->metadata))
+        return 0;
+    mount_point = (char *)kzalloc(sizeof(char) * len, GFP_KERNEL);
+    strcpy(mount_point, mount_md.mount_point);
+    mount_point[len - 1] = '\0';
+    file_path = strcat(mount_point, "the-file");
+    filp = filp_open(file_path, O_RDONLY, 0);
+    if (IS_ERR(filp))
+    {
+        printk("%s: Failed to open file\n", MOD_NAME);
+        return 0;
+    }
+
+    if (filp->f_op && filp->f_op->read)
+    {
+        filp->f_pos = BLK_SIZE * offset;
+
+        ret = filp->f_op->read(filp, destination, size, &filp->f_pos);
+        if (ret >= 0)
+        {
+            printk("%s: Read %d bytes from file\n", MOD_NAME, ret);
+        }
+        else
+        {
+            printk("%s: Failed to read from file\n", MOD_NAME);
+        }
+    }
+    filp_close(filp, NULL);
+    kfree(mount_point);
+    index = (my_epoch & MASK) ? 1 : 0;
+    __sync_fetch_and_add(&(the_tree.standing[index]), 1);
+    return ret;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
@@ -96,40 +172,53 @@ __SYSCALL_DEFINEx(1, _invalidate_data, int, offset)
 asmlinkage long sys_invalidate_data(int offset)
 {
 #endif
-    // int offset = 0;
-    // int i = 0;
-    // struct blk_element* elem = NULL;
+
+    int offset = 0;
+    int i = 0;
+    struct blk_element *removed = NULL;
+	int grace_epoch;
+	unsigned long last_epoch;
+	unsigned long updated_epoch;
+	unsigned long grace_period_threads;
+	int index;
+    //wait_queue_head_t invalidate_queue;
+    DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
     printk("%s: SYS_INVALIDATE_DATA \n", MOD_NAME);
-    //pthread_spin_lock(&(l->write_lock));
 
-	//TODO
-    //  for (i = 0; i < NBLOCKS; i++)
-    // {
-    //     offset = get_offset(i);
-    //     // bh = (struct buffer_head *)sb_bread(s, offset);
-    //     // if (!bh)
-    //     // {
-    //     //     printk("%s: Error in retrieving the block at offset %d (index %d) in the device", MOD_NAME, offset, i);
-    //     //     __sync_fetch_and_sub(bdev_usage_ptr, 1);
-    //     //     return -EIO;
-    //     // }
+    spin_lock(&(the_tree.write_lock));
 
-    //     AUDIT printk("%s: Flushing block at offset %d (index %d) into the device", MOD_NAME, offset, i);
-    //     elem = lookup(the_tree[*index]->head, get_index(block_to_read));
-    //     if (elem->dirtiness)
-    //         mark_buffer_dirty(bh);
-    //     if (sync_dirty_buffer(bh) == 0)
-    //     {
-    //         AUDIT printk("%s: SUCCESS IN SYNCHRONOUS WRITE", MODNAME);
-    //     }
-    //     else
-    //         printk("%s: FAILURE IN SYNCHRONOUS WRITE", MODNAME);
-    //     brelse(bh);
-    // }
+    for (i = 0; i < NBLOCKS; i++)
+     {
+        offset = get_offset(i);
 
-	//pthread_spin_unlock(&l->write_lock);
-    
+        AUDIT printk("%s: Flushing block at offset %d (index %d) into the device", MOD_NAME, offset, i);
+        elem = lookup(the_tree.head, get_index(block_to_read));
+        if (elem->dirtiness)
+            mark_buffer_dirty(bh);
+        if (sync_dirty_buffer(bh) == 0)
+        {
+            AUDIT printk("%s: SUCCESS IN SYNCHRONOUS WRITE", MODNAME);
+        }
+        else
+            printk("%s: FAILURE IN SYNCHRONOUS WRITE", MODNAME);
+        brelse(bh);
+    }
 
+    last_epoch = __atomic_exchange_n (&(the_tree.epoch), updated_epoch, __ATOMIC_SEQ_CST); 
+	index = (last_epoch & MASK) ? 1 : 0; 
+	grace_period_threads = last_epoch & (~MASK);
+
+    AUDIT printk("%s: deletion: waiting grace-full period (target value is %d)\n", MOD_NAME, grace_period_threads);
+
+    wait_event_interruptible(invalidate_queue, the_tree.pending[index] >= grace_period_threads);
+    while(the_tree.standing[index] < grace_period_threads);
+	the_tree.standing[index] = 0;
+    spin_unlock((&the_tree.write_lock));
+
+    if(removed){
+		kfree(removed);
+		return 1;
+	}
 
     return 0;
 }
@@ -143,19 +232,23 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
 {
     loff_t *my_off_ptr = get_off();
     int str_len = 0, index;
+    struct blk_element *the_block;
     struct buffer_head *bh = NULL;
     struct dev_blk *blk = NULL;
     struct inode *the_inode = filp->f_inode;
     uint64_t file_size = the_inode->i_size;
     unsigned long my_epoch;
-    //const char *dev_name = filp->f_path.dentry->d_iname;
+    // const char *dev_name = filp->f_path.dentry->d_iname;
     struct super_block *sb = filp->f_path.dentry->d_inode->i_sb;
     int ret = 0;
     loff_t offset;
     int block_to_read; // index of the block to be read from device
 
+    if (!bdev_md.open_count)
+        return -EBADF; // The file should be open to invoke a read
+
     AUDIT printk("%s: Read operation called with len %ld - and offset %lld (the current file size is %lld)", MOD_NAME, len, *off, file_size);
-    
+
     // check that *off is within boundaries
     *my_off_ptr = *off; // In this way each CPU has its own private copy and *off can't be changed concurrently
     if (*my_off_ptr >= file_size)
@@ -166,15 +259,18 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     // compute the actual index of the the block to be read from device
     block_to_read = *my_off_ptr / BLK_SIZE + 2; // the value 2 accounts for superblock and file-inode on device
 
-    if (block_to_read > NBLOCKS + 2) return 0; //Consistency check
+    if (block_to_read > NBLOCKS + 2)
+        return 0; // Consistency check
 
-    my_epoch = __sync_fetch_and_add(&(the_tree.epoch),1);
+    my_epoch = __sync_fetch_and_add(&(the_tree.epoch), 1);
     AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
 
-    if (!get_validity(lookup(the_tree.head, get_index(block_to_read))->metadata)) {
-        AUDIT printk("%s: The block at index %d is invalid", MOD_NAME, block_to_read);
-        len = 1;
-        ret = copy_to_user(buf, "", len);
+    the_block = lookup(the_tree.head, get_index(block_to_read));
+    if (!get_validity(the_block->metadata) || get_free(the_block->metadata))
+    {
+        AUDIT printk("%s: The block at index %d is invalid or free", MOD_NAME, block_to_read);
+        len = strlen("\n");
+        ret = copy_to_user(buf, "\n", len);
         *my_off_ptr += BLK_SIZE;
         goto exit;
     }
@@ -185,63 +281,76 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         AUDIT printk("%s: Error in retrieving the block %d", MOD_NAME, block_to_read);
         return -EIO;
     }
-    
+
     blk = (struct dev_blk *)bh->b_data;
 
     if (blk != NULL)
-    {   
+    {
         str_len = get_length(blk->metadata);
-        AUDIT printk ("%s: Block at index %d has message with length %d", MOD_NAME, block_to_read, str_len);
-        offset = *my_off_ptr % BLK_SIZE; //Residual
+        AUDIT printk("%s: Block at index %d has message with length %d", MOD_NAME, block_to_read, str_len);
+        offset = *my_off_ptr % BLK_SIZE; // Residual
 
         AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, block_to_read, offset, str_len - offset);
-        
-        if (offset == 0) len = str_len;
-        else if (offset < MD_SIZE + str_len) len = str_len - offset; 
-        else len = 0;
+
+        if (offset == 0)
+            len = str_len;
+        else if (offset < MD_SIZE + str_len)
+            len = str_len - offset;
+        else
+            len = 0;
 
         ret = copy_to_user(buf, blk->data + offset, len);
-        if (ret == 0) *my_off_ptr += BLK_SIZE - offset;
-        else *my_off_ptr += len - ret;
+        if (ret == 0)
+            *my_off_ptr += BLK_SIZE - offset;
+        else
+            *my_off_ptr += len - ret;
     }
-    else  *my_off_ptr += BLK_SIZE;
+    else
+        *my_off_ptr += BLK_SIZE;
 
     brelse(bh);
-exit: 
+exit:
     *off = *my_off_ptr;
     index = (my_epoch & MASK) ? 1 : 0;
-    __sync_fetch_and_add(&(the_tree.standing[index]),1);
+    __sync_fetch_and_add(&(the_tree.standing[index]), 1);
     return len - ret;
 }
 
 static int dev_release(struct inode *inode, struct file *filp)
 {
-    
+
     AUDIT printk("%s: Device release has been invoked: the thread %d trying to release the device file\n ", MOD_NAME, current->pid);
     if (bdev_md.bdev == NULL)
     {
-        __sync_fetch_and_sub(&(bdev_md.bdev_usage), 1);
+        __sync_fetch_and_sub(&(bdev_md.open_count), 1);
         printk("%s: Consistency check: the device is not mounted", MOD_NAME);
         return -ENODEV;
     }
-    __sync_fetch_and_sub(&(bdev_md.bdev_usage), 1);
+    __sync_fetch_and_sub(&(bdev_md.open_count), 1);
     return 0;
 }
 
 static int dev_open(struct inode *inode, struct file *filp)
 {
 
-    AUDIT printk("%s: Device open has been invoked: the thread %d trying to open file\n ", MOD_NAME, current->pid);
+    AUDIT printk("%s: Device open has been invoked: the thread %d trying to open file at offset %lld\n ", MOD_NAME, current->pid, filp->f_pos);
 
     if (filp->f_mode & FMODE_WRITE)
     {
-        __sync_fetch_and_sub(&(bdev_md.bdev_usage), 1);
+        __sync_fetch_and_sub(&(bdev_md.open_count), 1);
         printk("%s: Write operation not allowed", MOD_NAME);
         return -EROFS;
     }
     // Avoiding that a concurrent thread may have killed the sb with unomunt operation
-    __sync_fetch_and_add(&(bdev_md.bdev_usage), 1);
+    __sync_fetch_and_add(&(bdev_md.open_count), 1);
     return 0;
+}
+
+static loff_t dev_llseek(struct file *, loff_t off, int whence)
+{
+    AUDIT printk("%s: Device llseek has been invoked at offset %lld\n ", MOD_NAME, off);
+
+    return off;
 }
 
 const struct file_operations dev_fops = {
@@ -249,5 +358,4 @@ const struct file_operations dev_fops = {
     .read = dev_read,
     .release = dev_release,
     .open = dev_open,
-
-};
+    .llseek = dev_llseek};

@@ -119,13 +119,17 @@ int main(int argc, char *argv[])
 			printf("The block is too small");
 			return -1;
 		}
-		// if (i%2 == 0) {
-		// 	metadata = set_invalid(metadata);
-		// }
-		// else {
-	
+
+		if (i == 0){
 			metadata = set_valid(metadata);
-		//}
+			metadata = set_free(metadata);
+		}
+		else{
+			metadata = set_valid(metadata);
+			metadata = set_not_free(metadata);
+		}
+		
+
 		metadata = set_length(metadata, strlen(testo[i]));
 		ret = write(fd, &metadata, MD_SIZE);
 		printf("Metadata: %x\n", metadata);
