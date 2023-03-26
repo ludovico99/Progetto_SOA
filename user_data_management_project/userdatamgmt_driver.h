@@ -63,5 +63,6 @@ extern void insert(struct blk_element **, struct blk_element *);
 extern void stampa_albero(struct blk_element *root);
 extern void free_tree(struct blk_element *);
 extern struct blk_element* delete(struct blk_element*, int);
+extern struct blk_element* inorderTraversal(struct blk_element*);
 
 #endif

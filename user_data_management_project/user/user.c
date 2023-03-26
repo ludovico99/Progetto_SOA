@@ -17,6 +17,7 @@ int main(int argc, char** argv){
 	
 	long int arg;	
     char buffer[SIZE];
+    char write_buff[SIZE] = "Wathever content you would like.\n";
     int offset = 0;
     int ret;
 
@@ -31,7 +32,8 @@ int main(int argc, char** argv){
 
     switch (arg){
         case PUT_DATA:
-            syscall(PUT_DATA, buffer, SIZE);
+            ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
+            printf ("%s written into block at index (error-code) %d\n",write_buff, ret);
             break;
         case GET_DATA:
             offset = strtol(argv[2], NULL, 10);

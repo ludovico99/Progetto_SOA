@@ -42,54 +42,95 @@ static __always_inline loff_t *get_off(void)
 __SYSCALL_DEFINEx(2, _put_data, char *, source, ssize_t, size)
 {
 #else
-asmlinkage long sys_put_data(char *source, ssize_t size)
+asmlinkage int sys_put_data(char *source, ssize_t size)
 {
 #endif
+    struct blk_element *the_block;
+    struct dev_blk* the_dev_blk;
+    struct buffer_head * bh;
+    char * destination;
+    uint16_t *the_metadata;
+    int ret = -1;
 
+    DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
     printk("%s: SYS_PUT_DATA \n", MOD_NAME);
-    // loff_t offset = 100; // l'offset dal quale iniziare l'apertura del file
-    // struct file *filp = filp_open("/path/to/file", O_RDONLY, 0);
-    // if (IS_ERR(filp)) {
-    // printk(KERN_ALERT "Failed to open file\n");
-    // return PTR_ERR(filp);
-    // }
 
-    // if (filp->f_op && filp->f_op->read) {
-    // char buf[256];
-    // memset(buf, 0, sizeof(buf));
-    // loff_t pos = filp->f_pos;
-    // mm_segment_t oldfs = get_fs();
-    // set_fs(KERNEL_DS);
+     if (!mount_md.mounted)
+    {
+        printk("%s: The device is not mounted", MOD_NAME);
+        return -ENODEV;
+    }
 
-    // if (vfs_setpos(filp, offset, pos) == 0) {
-    //     int ret = filp->f_op->read(filp, buf, sizeof(buf), &filp->f_pos);
-    //     if (ret >= 0) {
-    //         printk(KERN_INFO "Read %d bytes from file\n", ret);
-    //         // fai qualcosa con il contenuto del file letto
-    //     } else {
-    //         printk(KERN_ALERT "Failed to read from file\n");
-    //     }
-    // } else {
-    //     printk(KERN_ALERT "Failed to set file position\n");
-    // }
+    if (size > SIZE)
+        size = SIZE;
+    if (size < 0)
+        return -EINVAL;
 
-    // set_fs(oldfs);
-    // }
+    __sync_fetch_and_add(&(bdev_md.open_count),1);
+    
+    spin_lock(&(the_tree.write_lock));
+    the_block = inorderTraversal(the_tree.head);
+    if (the_block == NULL) {
+        printk("%s: No blocks available in the device\n",MOD_NAME);
+        ret = -ENOMEM;
+        goto exit_2;
+    }
 
-    // filp_close(filp, NULL);
+    destination = (char*) kzalloc(BLK_SIZE, GFP_KERNEL); 
 
-    //  elem = lookup(the_tree.head, get_index(block_to_read));
-    // if (elem->dirtiness)
-    //     mark_buffer_dirty(bh);
-    // if (sync_dirty_buffer(bh) == 0)
-    // {
-    //     AUDIT printk("%s: SUCCESS IN SYNCHRONOUS WRITE", MODNAME);
-    // }
-    // else
-    //     printk("%s: FAILURE IN SYNCHRONOUS WRITE", MODNAME);
-    // brelse(bh);
+    if (!destination){
+    
+        printk("%s: Kzalloc has failed\n",MOD_NAME);
+        ret = -ENOMEM;
+        goto exit_2;
+   }
+    ret = copy_from_user(destination + MD_SIZE, source, size);
 
-    return 0;
+    AUDIT printk("%s: Old metadata for block at index %d are %x", MOD_NAME, get_length(ret), *the_metadata);
+    the_block ->dirtiness = 1;
+    asm volatile("mfence");
+    the_metadata = &the_block -> metadata;
+    asm volatile("mfence");
+    *the_metadata = set_valid(*the_metadata) | set_not_free(*the_metadata) | set_length(*the_metadata, size);
+    asm volatile("mfence");
+    ret = get_offset(the_block->index);
+    AUDIT printk("%s: New metadata for block at index %d are %x", MOD_NAME, get_length(ret), *the_metadata);
+    memcpy(destination, &the_block->metadata, MD_SIZE);
+  
+    printk("%s: Flushing changes into the device",MOD_NAME);
+
+    bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, ret);
+    if (!bh)
+    {
+        AUDIT printk("%s: Error in retrieving the block at offset %d", MOD_NAME, ret);
+        ret = -EIO;
+        goto exit;
+    }
+    the_dev_blk = (struct dev_blk *)bh->b_data;
+
+    if (the_dev_blk != NULL)
+    {
+        memcpy(bh->b_data, destination, BLK_SIZE);
+#ifndef SYNC_FLUSH
+        mark_buffer_dirty(bh);
+#else
+        if (sync_dirty_buffer(bh) == 0)
+        {
+            AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
+            the_block ->dirtiness = 0;
+            asm volatile("mfence");
+        }
+        else
+            printk("%s: Synchronous flush not succeded", MOD_NAME);
+#endif
+    }
+    brelse(bh);  
+exit:
+    kfree(destination);
+exit_2:
+    spin_unlock(&(the_tree.write_lock));
+    __sync_fetch_and_sub(&(bdev_md.open_count),1);
+    return ret;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
@@ -195,6 +236,12 @@ asmlinkage long sys_invalidate_data(int offset)
     DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
     printk("%s: SYS_INVALIDATE_DATA \n", MOD_NAME);
 
+    if (!mount_md.mounted)
+    {
+        printk("%s: The device is not mounted", MOD_NAME);
+        return -ENODEV;
+    }
+
     if (offset > NBLOCKS - 1 || offset < 0)
         return -EINVAL;
 
@@ -235,7 +282,6 @@ asmlinkage long sys_invalidate_data(int offset)
     //if (the_block) kfree(the_block);
     
     // FLUSHING METADATA CHANGES INTO THE DEVICE
-    if (!the_block->dirtiness) return 1;
     printk("%s: Flushing metadata changes into the device",MOD_NAME);
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, get_offset(offset));
     if (!bh)
@@ -254,6 +300,8 @@ asmlinkage long sys_invalidate_data(int offset)
         if (sync_dirty_buffer(bh) == 0)
         {
             AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
+            the_block ->dirtiness = 0;
+            asm volatile("mfence");
         }
         else
             printk("%s: Synchronous flush not succeded", MOD_NAME);
@@ -284,6 +332,11 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     loff_t offset;
     int block_to_read; // index of the block to be read from device
 
+    if (!mount_md.mounted)
+    {
+        printk("%s: The device is not mounted", MOD_NAME);
+        return -ENODEV;
+    }
     if (!bdev_md.open_count)
         return -EBADF; // The file should be open to invoke a read
 
@@ -306,7 +359,8 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
 
     the_block = lookup(the_tree.head, get_index(block_to_read));
-    if (!get_validity(the_block->metadata) || get_free(the_block->metadata))
+ 
+    if (the_block == NULL || !get_validity(the_block->metadata) || get_free(the_block->metadata))
     {
         AUDIT printk("%s: The block at index %d is invalid or free", MOD_NAME, block_to_read);
         len = strlen("\n");
@@ -360,10 +414,11 @@ static int dev_release(struct inode *inode, struct file *filp)
 {
 
     AUDIT printk("%s: Device release has been invoked: the thread %d trying to release the device file\n ", MOD_NAME, current->pid);
-    if (bdev_md.bdev == NULL)
-    {
+
+    if (!mount_md.mounted)
+    {   
         __sync_fetch_and_sub(&(bdev_md.open_count), 1);
-        printk("%s: Consistency check: the device is not mounted", MOD_NAME);
+        printk("%s: The device is not mounted", MOD_NAME);
         return -ENODEV;
     }
     __sync_fetch_and_sub(&(bdev_md.open_count), 1);
@@ -374,6 +429,12 @@ static int dev_open(struct inode *inode, struct file *filp)
 {
 
     AUDIT printk("%s: Device open has been invoked: the thread %d trying to open file at offset %lld\n ", MOD_NAME, current->pid, filp->f_pos);
+
+    if (!mount_md.mounted)
+    {
+        printk("%s: The device is not mounted", MOD_NAME);
+        return -ENODEV;
+    }
 
     if (filp->f_mode & FMODE_WRITE)
     {

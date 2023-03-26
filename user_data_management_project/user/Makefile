@@ -12,4 +12,4 @@ get_data:
 	./user $(get_data_sys_num) 2
 
 invalidate_data:
-	./user $(invalidate_data_sys_num) 8
+	./user $(invalidate_data_sys_num) 7
