@@ -49,10 +49,10 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     struct dev_blk* the_dev_blk;
     struct buffer_head * bh;
     char * destination;
-    uint16_t *the_metadata;
+    uint16_t *the_metadata = NULL;
+    unsigned long residual_bytes = -1;
     int ret = -1;
 
-    DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
     printk("%s: SYS_PUT_DATA \n", MOD_NAME);
 
      if (!mount_md.mounted)
@@ -67,9 +67,10 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         return -EINVAL;
 
     __sync_fetch_and_add(&(bdev_md.open_count),1);
-    
     spin_lock(&(the_tree.write_lock));
+
     the_block = inorderTraversal(the_tree.head);
+
     if (the_block == NULL) {
         printk("%s: No blocks available in the device\n",MOD_NAME);
         ret = -ENOMEM;
@@ -84,25 +85,31 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         ret = -ENOMEM;
         goto exit_2;
    }
-    ret = copy_from_user(destination + MD_SIZE, source, size);
+    residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
+    AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
 
-    AUDIT printk("%s: Old metadata for block at index %d are %x", MOD_NAME, get_length(ret), *the_metadata);
+    ret = get_offset(the_block->index);
+    the_metadata = &(the_block -> metadata);
+
+    AUDIT printk("%s: Old metadata for block at index %d (index %d) are %x", MOD_NAME, ret, get_index(ret), *the_metadata);
+
     the_block ->dirtiness = 1;
     asm volatile("mfence");
-    the_metadata = &the_block -> metadata;
+    *the_metadata = set_valid(*the_metadata);
+    *the_metadata = set_not_free(*the_metadata); 
+    *the_metadata = set_length(*the_metadata, size);
     asm volatile("mfence");
-    *the_metadata = set_valid(*the_metadata) | set_not_free(*the_metadata) | set_length(*the_metadata, size);
-    asm volatile("mfence");
-    ret = get_offset(the_block->index);
-    AUDIT printk("%s: New metadata for block at index %d are %x", MOD_NAME, get_length(ret), *the_metadata);
-    memcpy(destination, &the_block->metadata, MD_SIZE);
+
+    AUDIT printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), *the_metadata);
+
+    memcpy(destination, the_metadata, MD_SIZE);
   
     printk("%s: Flushing changes into the device",MOD_NAME);
 
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, ret);
     if (!bh)
     {
-        AUDIT printk("%s: Error in retrieving the block at offset %d", MOD_NAME, ret);
+        AUDIT printk("%s: Error in retrieving the block at offset %d ", MOD_NAME, ret);
         ret = -EIO;
         goto exit;
     }
@@ -167,6 +174,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
         size = SIZE;
     if (size < 0 || offset > NBLOCKS - 1 || offset < 0)
         return -EINVAL;
+
     epoch = &the_tree.epoch;
     my_epoch = __sync_fetch_and_add(epoch, 1);
 
@@ -245,6 +253,7 @@ asmlinkage long sys_invalidate_data(int offset)
     if (offset > NBLOCKS - 1 || offset < 0)
         return -EINVAL;
 
+    __sync_fetch_and_add(&(bdev_md.open_count),1);
     spin_lock(&(the_tree.write_lock));
 
     AUDIT printk("%s: Traverse the tree to find block at offset %d", MOD_NAME, offset);
@@ -258,6 +267,7 @@ asmlinkage long sys_invalidate_data(int offset)
     if (!get_validity(the_block->metadata))
     {
         spin_unlock(&(the_tree.write_lock));
+        __sync_fetch_and_sub(&(bdev_md.open_count),1);
         return -ENODATA;
     }
     the_block->metadata = set_invalid(the_block->metadata);
@@ -287,6 +297,7 @@ asmlinkage long sys_invalidate_data(int offset)
     if (!bh)
     {
         AUDIT printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
+        __sync_fetch_and_sub(&(bdev_md.open_count),1);
         return -EIO;
     }
     blk = (struct dev_blk *)bh->b_data;
@@ -308,6 +319,7 @@ asmlinkage long sys_invalidate_data(int offset)
 #endif
     }
     brelse(bh);
+    __sync_fetch_and_sub(&(bdev_md.open_count),1);
     return 1;
 }
 

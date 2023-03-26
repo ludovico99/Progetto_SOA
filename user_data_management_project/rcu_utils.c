@@ -180,21 +180,24 @@ void stampa_albero(struct blk_element *root)
 }
 
 struct blk_element *inorderTraversal(struct blk_element *root)
-{
+{   
+    struct blk_element* left_node = NULL;
     if (root == NULL)
     {
         return NULL;
     }
-   
-    inorderTraversal(root->left);
-
-     // Return the lowest block that is invalid or is valid and free
+    // Return a block that is invalid or is valid and free
     if (!get_validity(root->metadata) || (get_validity(root->metadata) && get_free(root->metadata)))
-        return root;
+        return root;  
 
-    inorderTraversal(root->right);
-    return NULL;
+    left_node = inorderTraversal(root->left);
+     if (left_node != NULL) {
+        return left_node;
+    }
+    return inorderTraversal(root->right);
+
 }
+
 
 void free_tree(struct blk_element *root)
 {

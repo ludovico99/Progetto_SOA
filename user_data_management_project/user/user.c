@@ -19,6 +19,7 @@ int main(int argc, char** argv){
     char buffer[SIZE];
     char write_buff[SIZE] = "Wathever content you would like.\n";
     int offset = 0;
+    int bytes_read = 0;
     int ret;
 
 	if(argc < 2){
@@ -28,7 +29,7 @@ int main(int argc, char** argv){
 	
     
 	arg = strtol(argv[1],NULL,10);
-    
+    printf("Invoked system call with NR: %ld\n", arg);
 
     switch (arg){
         case PUT_DATA:
@@ -37,12 +38,12 @@ int main(int argc, char** argv){
             break;
         case GET_DATA:
             offset = strtol(argv[2], NULL, 10);
-            int bytes_read = syscall(GET_DATA, offset, buffer, SIZE);
+            bytes_read = syscall(GET_DATA, offset, buffer, SIZE);
             printf ("Bytes read (%d) from block at index %d: %s\n", bytes_read, offset, buffer);
             break;
         case INVALIDATE_DATA:
             offset = strtol(argv[2], NULL, 10);
-            int ret = syscall(INVALIDATE_DATA, offset);
+            ret = syscall(INVALIDATE_DATA, offset);
             printf ("The block at index %d invalidation ended with code %d\n", offset, ret);
             break;
         default:
