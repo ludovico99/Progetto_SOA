@@ -11,6 +11,7 @@
 
 #include "user.h"
 
+#define MULTI_OPS -1
 #define PUT_DATA 156
 #define GET_DATA 174
 #define INVALIDATE_DATA 177
@@ -33,7 +34,15 @@ void *my_thread(void *index)
     int arg;
 
     arg = strtol(data[1], NULL, 10);
-    AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
+    
+    if (arg == MULTI_OPS){
+        int op = my_id % 3;
+        if (op == 0) arg = GET_DATA;
+        else if (op == 1) arg = INVALIDATE_DATA;
+        else arg = PUT_DATA;
+        AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
+    }
+    else AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
 
   
     if (arg == PUT_DATA){
