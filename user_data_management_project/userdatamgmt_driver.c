@@ -66,7 +66,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     if (size < 0)
         return -EINVAL;
 
-    __sync_fetch_and_add(&(bdev_md.open_count),1);
+    __sync_fetch_and_add(&(bdev_md.count),1);
     spin_lock(&(the_tree.write_lock));
 
     the_block = inorderTraversal(the_tree.head);
@@ -139,7 +139,7 @@ exit:
     kfree(destination);
 exit_2:
     spin_unlock(&(the_tree.write_lock));
-    __sync_fetch_and_sub(&(bdev_md.open_count),1);
+    __sync_fetch_and_sub(&(bdev_md.count),1);
     return ret;
 }
 
@@ -256,7 +256,7 @@ asmlinkage long sys_invalidate_data(int offset)
     if (offset > NBLOCKS - 1 || offset < 0)
         return -EINVAL;
 
-    __sync_fetch_and_add(&(bdev_md.open_count),1);
+    __sync_fetch_and_add(&(bdev_md.count),1); //The unmount operation is not permitted
     spin_lock(&(the_tree.write_lock));
 
     AUDIT printk("%s: Traverse the tree to find block at offset %d", MOD_NAME, offset);
@@ -269,7 +269,7 @@ asmlinkage long sys_invalidate_data(int offset)
     if (!get_validity(the_block->metadata))
     {
         spin_unlock(&(the_tree.write_lock));
-        __sync_fetch_and_sub(&(bdev_md.open_count),1);
+        __sync_fetch_and_sub(&(bdev_md.count),1);
         return -ENODATA;
     }
     the_block->metadata = set_invalid(the_block->metadata);
@@ -299,7 +299,7 @@ asmlinkage long sys_invalidate_data(int offset)
     if (!bh)
     {
         AUDIT printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
-        __sync_fetch_and_sub(&(bdev_md.open_count),1);
+        __sync_fetch_and_sub(&(bdev_md.count),1);
         return -EIO;
     }
     blk = (struct dev_blk *)bh->b_data;
@@ -325,7 +325,7 @@ asmlinkage long sys_invalidate_data(int offset)
     }
     brelse(bh);
     spin_unlock((&the_tree.write_lock));
-    __sync_fetch_and_sub(&(bdev_md.open_count),1);
+    __sync_fetch_and_sub(&(bdev_md.count),1);
     return 1;
 }
 
@@ -355,7 +355,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         printk("%s: The device is not mounted", MOD_NAME);
         return -ENODEV;
     }
-    if (!bdev_md.open_count)
+    if (!bdev_md.count)
         return -EBADF; // The file should be open to invoke a read
 
     AUDIT printk("%s: Read operation called with len %ld - and offset %lld (the current file size is %lld)", MOD_NAME, len, *off, file_size);
@@ -435,11 +435,10 @@ static int dev_release(struct inode *inode, struct file *filp)
 
     if (!mount_md.mounted)
     {   
-        __sync_fetch_and_sub(&(bdev_md.open_count), 1);
         printk("%s: The device is not mounted", MOD_NAME);
         return -ENODEV;
     }
-    __sync_fetch_and_sub(&(bdev_md.open_count), 1);
+    __sync_fetch_and_sub(&(bdev_md.count), 1);
     return 0;
 }
 
@@ -453,15 +452,13 @@ static int dev_open(struct inode *inode, struct file *filp)
         printk("%s: The device is not mounted", MOD_NAME);
         return -ENODEV;
     }
-
     if (filp->f_mode & FMODE_WRITE)
     {
-        __sync_fetch_and_sub(&(bdev_md.open_count), 1);
         printk("%s: Write operation not allowed", MOD_NAME);
         return -EROFS;
     }
     // Avoiding that a concurrent thread may have killed the sb with unomunt operation
-    __sync_fetch_and_add(&(bdev_md.open_count), 1);
+    __sync_fetch_and_add(&(bdev_md.count), 1);
     return 0;
 }
 

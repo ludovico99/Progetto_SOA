@@ -21,7 +21,7 @@
 #define MD_SIZE sizeof(uint16_t)
 #define SIZE (BLK_SIZE - MD_SIZE)
 //#define SYNC_FLUSH 
-#define NBLOCKS 10
+#define NBLOCKS 20
 #define PERIOD 1000
 
 #define get_index(offset)   ((offset) - 2)

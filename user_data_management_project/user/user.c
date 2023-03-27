@@ -7,49 +7,134 @@
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <pthread.h>
+
+#include "user.h"
 
 #define PUT_DATA 156
 #define GET_DATA 174
 #define INVALIDATE_DATA 177
 #define SIZE 4096
 
-int main(int argc, char** argv){
-	
-	long int arg;	
+char **data;
+int total = 0;
+void *my_thread(void *index)
+{
+    int my_id = *(int *)index;
+    int my_part = 0;
+    char **temp;
+    int count = 0;
     char buffer[SIZE];
     char write_buff[SIZE] = "Wathever content you would like.\n";
     int offset = 0;
-    int bytes_read = 0;
-    int ret;
+    int ret = -1;
+    int arg;
 
-	if(argc < 2){
-		printf("usage: prog sys_call-num [offset] \n");
-		return EXIT_FAILURE;
-	}	
-	
-    
-	arg = strtol(argv[1],NULL,10);
-    printf("Invoked system call with NR: %ld\n", arg);
+    arg = strtol(data[1], NULL, 10);
+    printf("Invoked system call with NR: %d\n", arg);
 
-    switch (arg){
+    temp = &data[3];
+    while (temp != NULL)
+    {   
+        my_part = my_id + total / NUM_THREADS;
+        if (my_part > total) break;
+        offset = atoi(temp[my_id + total / NUM_THREADS]);
+        switch (arg)
+        {
         case PUT_DATA:
             ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
-            if (ret >=0) printf ("%s written into block at offset %d\n",write_buff, ret);
+            if (ret >= 0)
+                printf("%s written into block at offset %d\n", write_buff, ret);
             break;
         case GET_DATA:
-            offset = strtol(argv[2], NULL, 10);
-            bytes_read = syscall(GET_DATA, offset, buffer, SIZE);
-            if (ret >=0) printf ("Bytes read (%d) from block at index %d: %s\n", bytes_read, offset, buffer);
+            ret = syscall(GET_DATA, offset, buffer, SIZE);
+            if (ret >= 0)
+                printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
             break;
         case INVALIDATE_DATA:
-            offset = strtol(argv[2], NULL, 10);
             ret = syscall(INVALIDATE_DATA, offset);
-            if (ret >=0) printf ("The block at index %d invalidation ended with code %d\n", offset, ret);
+            if (ret >= 0)
+                printf("The block at index %d invalidation ended with code %d\n", offset, ret);
             break;
         default:
             printf("Syscall number inserted is invalid");
             break;
+        }
+        if (ret < 0)
+            printf("The system call invoked ended with the following error message: %s\n", strerror(-ret));
+
+        temp = &(temp[my_id + total / NUM_THREADS]);
     }
-    if (ret < 0) printf( "The system call invoked ended with the following error message: %s\n", strerror(-ret));
-	return 0;
+}
+
+int main(int argc, char **argv)
+{
+    int arg;
+
+#ifndef MULTI_THREAD
+    char buffer[SIZE];
+    char write_buff[SIZE] = "Wathever content you would like.\n";
+    int offset = 0;
+    int ret = -1;
+    if (argc < 2)
+    {
+        printf("usage: prog sys_call-num [offset] \n");
+        return EXIT_FAILURE;
+    }
+
+    arg = strtol(argv[1], NULL, 10);
+    printf("Invoked system call with NR: %ld\n", arg);
+
+    switch (arg)
+    {
+    case PUT_DATA:
+        ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
+        if (ret >= 0)
+            printf("%s written into block at offset %d\n", write_buff, ret);
+        break;
+    case GET_DATA:
+        offset = strtol(argv[2], NULL, 10);
+        ret = syscall(GET_DATA, offset, buffer, SIZE);
+        if (ret >= 0)
+            printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
+        break;
+    case INVALIDATE_DATA:
+        offset = strtol(argv[2], NULL, 10);
+        ret = syscall(INVALIDATE_DATA, offset);
+        if (ret >= 0)
+            printf("The block at index %d invalidation ended with code %d\n", offset, ret);
+        break;
+    default:
+        printf("Syscall number inserted is invalid");
+        break;
+    }
+    if (ret < 0)
+        printf("The system call invoked ended with the following error message: %s\n", strerror(-ret));
+
+#else
+    int i = 0;
+    char **temp = NULL;
+    pthread_t tids[NUM_THREADS];
+    if (argc < 2)
+    {
+        printf("usage: prog sys_call-num [offset 1, offset 2, offset 3 ....] \n");
+        return EXIT_FAILURE;
+    }
+
+    data = argv;
+    temp = data;
+    while (temp != NULL)
+    {   
+        total += 1;
+        temp = &temp[total];
+    }
+
+    total = total - 2; //Total offsets passed as arguments 
+
+    for (i = 0; i < NUM_THREADS; i++)
+        pthread_create(&tids[i], NULL, my_thread, &i);
+    for (i = 0; i < NUM_THREADS; i++)
+        pthread_join(tids[i], NULL);
+#endif
+    return 0;
 }

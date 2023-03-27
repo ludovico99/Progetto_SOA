@@ -33,7 +33,7 @@
 #include "userdatamgmt_fs.h"
 #include "../userdatamgmt_driver.h"
 
-struct bdev_metadata bdev_md = {NULL, 0, NULL};
+struct bdev_metadata bdev_md = {0,NULL, NULL};
 struct mount_metadata mount_md = {0, "/"};
 
 static struct super_operations my_super_ops = {};
@@ -133,9 +133,9 @@ static void userdatafs_kill_superblock(struct super_block *s)
         return;
     }
 
-    printk("%s: waiting the pending threads (%d)...", MOD_NAME, bdev_md.open_count);
-    //AUDIT printk("%s: open_count is %d",MOD_NAME, bdev_md.open_count);
-    wait_event_interruptible(unmount_queue, bdev_md.open_count == 0);
+    printk("%s: waiting the pending threads (%d)...", MOD_NAME, bdev_md.count);
+    //AUDIT printk("%s: count is %d",MOD_NAME, bdev_md.count);
+    wait_event_interruptible(unmount_queue, bdev_md.count == 0);
 
     kill_block_super(s);
    

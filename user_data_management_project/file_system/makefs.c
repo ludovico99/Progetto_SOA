@@ -8,12 +8,6 @@
 #include <string.h>
 
 #include "userdatamgmt_fs.h"
-/*
-	This makefs will write the following information onto the disk
-	- BLOCK 0, superblock;
-	- BLOCK 1, inode of the unique file (the inode for root is volatile);
-	- BLOCK 2, ..., datablocks of the unique file
-*/
 
 char* testo[] = {
 "I have a dream  - Martin Luther King Jr\n",
@@ -46,7 +40,6 @@ int main(int argc, char *argv[])
 	struct userdatafs_inode file_inode;
 	struct userdatafs_dir_record record;
 	char *block_padding;
-	//uint16_t metadata = 0x1 << ((sizeof(uint16_t))*8 - 1);
 	uint16_t metadata = 0x0;
 
 	char *file_body = "Wathever content you would like.\n"; // this is the default content of the unique file

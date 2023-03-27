@@ -78,14 +78,6 @@ int init_module(void) {
 
     printk("%s: all new system-calls correctly installed on sys-call table\n",MOD_NAME);
 
-    // Major = __register_chrdev(0, 0, 256, DEVICE_NAME, &dev_fops);
-	// if (Major < 0) {
-	//         printk("%s: registering device failed\n",MOD_NAME);
-	//         return Major;
-	// }
-
-	// printk("%s: new device registered, it is assigned major number %d\n",MOD_NAME, Major);
-
     //register filesystem
     ret = register_filesystem(&userdatafs_type);
     if (likely(ret == 0))
@@ -108,10 +100,6 @@ void cleanup_module(void) {
     }
     protect_memory();
     printk("%s: sys-call table restored to its original content\n",MOD_NAME);
-
-    // unregister_chrdev(Major, DEVICE_NAME);
-        
-    // printk("%s: new device unregistered, it was assigned major number %d\n",MOD_NAME, Major);
 
     //unregister filesystem
     ret = unregister_filesystem(&userdatafs_type);
