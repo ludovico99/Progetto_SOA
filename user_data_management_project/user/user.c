@@ -17,35 +17,42 @@
 #define SIZE 4096
 
 char **data;
-int total = 0;
+int num_params = 0;
+
 void *my_thread(void *index)
 {
-    int my_id = *(int *)index;
+    int my_id = *(int*)index;
     int my_part = 0;
-    char **temp;
+    char **temp = &data[2];
     int count = 0;
     char buffer[SIZE];
     char write_buff[SIZE] = "Wathever content you would like.\n";
     int offset = 0;
     int ret = -1;
+    int i = 0;
     int arg;
 
     arg = strtol(data[1], NULL, 10);
-    printf("Invoked system call with NR: %d\n", arg);
+    AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
 
-    temp = &data[3];
-    while (temp != NULL)
-    {   
-        my_part = my_id + total / NUM_THREADS;
-        if (my_part > total) break;
-        offset = atoi(temp[my_id + total / NUM_THREADS]);
+  
+    if (arg == PUT_DATA){
+        ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
+        if (ret >= 0)
+                AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
+        else
+            AUDIT printf("The system call %d ended with the following error message: %s\n",arg, strerror(-ret));
+        pthread_exit(0);
+    }
+
+    my_part = my_id;
+    while (my_part < num_params)
+    {
+        offset = atoi(temp[my_part]);
+        
         switch (arg)
         {
-        case PUT_DATA:
-            ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
-            if (ret >= 0)
-                printf("%s written into block at offset %d\n", write_buff, ret);
-            break;
+      
         case GET_DATA:
             ret = syscall(GET_DATA, offset, buffer, SIZE);
             if (ret >= 0)
@@ -54,17 +61,19 @@ void *my_thread(void *index)
         case INVALIDATE_DATA:
             ret = syscall(INVALIDATE_DATA, offset);
             if (ret >= 0)
-                printf("The block at index %d invalidation ended with code %d\n", offset, ret);
+                AUDIT printf("The block at index %d invalidation ended with code %d\n", offset, ret);
             break;
         default:
-            printf("Syscall number inserted is invalid");
+            AUDIT printf("Syscall number inserted is invalid");
             break;
         }
         if (ret < 0)
-            printf("The system call invoked ended with the following error message: %s\n", strerror(-ret));
+           AUDIT printf("The system call %d ended with the following error message: %s\n",arg, strerror(-ret));
 
-        temp = &(temp[my_id + total / NUM_THREADS]);
+        i += 1;
+        my_part = my_id + NUM_THREADS * i;
     }
+    pthread_exit(0);
 }
 
 int main(int argc, char **argv)
@@ -83,14 +92,14 @@ int main(int argc, char **argv)
     }
 
     arg = strtol(argv[1], NULL, 10);
-    printf("Invoked system call with NR: %ld\n", arg);
+    AUDIT printf("Invoked system call with NR: %d\n", arg);
 
     switch (arg)
     {
     case PUT_DATA:
         ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
         if (ret >= 0)
-            printf("%s written into block at offset %d\n", write_buff, ret);
+            AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
         break;
     case GET_DATA:
         offset = strtol(argv[2], NULL, 10);
@@ -102,19 +111,19 @@ int main(int argc, char **argv)
         offset = strtol(argv[2], NULL, 10);
         ret = syscall(INVALIDATE_DATA, offset);
         if (ret >= 0)
-            printf("The block at index %d invalidation ended with code %d\n", offset, ret);
+            AUDIT printf("The block at index %d invalidation ended with code %d\n", offset, ret);
         break;
     default:
-        printf("Syscall number inserted is invalid");
+        AUDIT printf("Syscall number inserted is invalid");
         break;
     }
     if (ret < 0)
-        printf("The system call invoked ended with the following error message: %s\n", strerror(-ret));
+        AUDIT printf("The system call invoked ended with the following error message: %s\n", strerror(-ret));
 
 #else
     int i = 0;
-    char **temp = NULL;
     pthread_t tids[NUM_THREADS];
+    int array[NUM_THREADS];
     if (argc < 2)
     {
         printf("usage: prog sys_call-num [offset 1, offset 2, offset 3 ....] \n");
@@ -122,17 +131,14 @@ int main(int argc, char **argv)
     }
 
     data = argv;
-    temp = data;
-    while (temp != NULL)
-    {   
-        total += 1;
-        temp = &temp[total];
+    num_params = argc - 2; // Total offsets passed as arguments
+    AUDIT printf("num params: %d \n", num_params);
+    AUDIT printf("Spawning %d threads ...\n", NUM_THREADS);
+    for (i = 0; i < NUM_THREADS; i++){
+        array[i] = i;
+        pthread_create(&tids[i], NULL, my_thread, (void*)&array[i]);
     }
 
-    total = total - 2; //Total offsets passed as arguments 
-
-    for (i = 0; i < NUM_THREADS; i++)
-        pthread_create(&tids[i], NULL, my_thread, &i);
     for (i = 0; i < NUM_THREADS; i++)
         pthread_join(tids[i], NULL);
 #endif
