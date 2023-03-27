@@ -34,22 +34,22 @@ int main(int argc, char** argv){
     switch (arg){
         case PUT_DATA:
             ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
-            printf ("%s written into block at index (error-code) %d\n",write_buff, ret);
+            if (ret >=0) printf ("%s written into block at offset %d\n",write_buff, ret);
             break;
         case GET_DATA:
             offset = strtol(argv[2], NULL, 10);
             bytes_read = syscall(GET_DATA, offset, buffer, SIZE);
-            printf ("Bytes read (%d) from block at index %d: %s\n", bytes_read, offset, buffer);
+            if (ret >=0) printf ("Bytes read (%d) from block at index %d: %s\n", bytes_read, offset, buffer);
             break;
         case INVALIDATE_DATA:
             offset = strtol(argv[2], NULL, 10);
             ret = syscall(INVALIDATE_DATA, offset);
-            printf ("The block at index %d invalidation ended with code %d\n", offset, ret);
+            if (ret >=0) printf ("The block at index %d invalidation ended with code %d\n", offset, ret);
             break;
         default:
             printf("Syscall number inserted is invalid");
             break;
     }
-    
+    if (ret < 0) printf( "The system call invoked ended with the following error message: %s\n", strerror(-ret));
 	return 0;
 }

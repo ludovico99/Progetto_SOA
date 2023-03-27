@@ -120,6 +120,9 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         memcpy(bh->b_data, destination, BLK_SIZE);
 #ifndef SYNC_FLUSH
         mark_buffer_dirty(bh);
+        the_block ->dirtiness = 0;
+        asm volatile("mfence");
+        AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
 #else
         if (sync_dirty_buffer(bh) == 0)
         {
@@ -259,7 +262,6 @@ asmlinkage long sys_invalidate_data(int offset)
     AUDIT printk("%s: Traverse the tree to find block at offset %d", MOD_NAME, offset);
     
     the_block = lookup(the_tree.head, offset);
-    //delete(the_tree.head, offset);
    //stampa_albero(the_tree.head);
     the_block->dirtiness = 1;
     asm volatile("mfence"); // make it visible to readers
@@ -286,10 +288,10 @@ asmlinkage long sys_invalidate_data(int offset)
     AUDIT printk("%s: Deletion: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
 
     wait_event_interruptible(invalidate_queue, the_tree.standing[index] >= grace_period_threads);
-    the_tree.standing[index] = 0;
-    spin_unlock((&the_tree.write_lock));
 
-    //if (the_block) kfree(the_block);
+    the_tree.standing[index] = 0;
+    asm volatile("mfence"); // make it visible to readers
+    //if (the_block) delete(the_tree.head, offset);
     
     // FLUSHING METADATA CHANGES INTO THE DEVICE
     printk("%s: Flushing metadata changes into the device",MOD_NAME);
@@ -307,6 +309,9 @@ asmlinkage long sys_invalidate_data(int offset)
         memcpy(bh->b_data, &the_block->metadata, MD_SIZE);
 #ifndef SYNC_FLUSH
         mark_buffer_dirty(bh);
+        the_block ->dirtiness = 0;
+        asm volatile("mfence");
+        AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
 #else
         if (sync_dirty_buffer(bh) == 0)
         {
@@ -319,6 +324,7 @@ asmlinkage long sys_invalidate_data(int offset)
 #endif
     }
     brelse(bh);
+    spin_unlock((&the_tree.write_lock));
     __sync_fetch_and_sub(&(bdev_md.open_count),1);
     return 1;
 }

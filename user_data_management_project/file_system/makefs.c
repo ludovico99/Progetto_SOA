@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
 
 		if (i == 0){
 			metadata = set_valid(metadata);
-			metadata = set_free(metadata);
+			metadata = set_not_free(metadata);
 		}
 		else{
 			metadata = set_valid(metadata);

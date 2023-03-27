@@ -20,7 +20,7 @@
 #define EPOCHS (2) //we have the current and the past epoch only
 #define MD_SIZE sizeof(uint16_t)
 #define SIZE (BLK_SIZE - MD_SIZE)
-#define SYNC_FLUSH 
+//#define SYNC_FLUSH 
 #define NBLOCKS 10
 #define PERIOD 1000
 

@@ -9,7 +9,7 @@ put_data:
 	./user $(put_data_sys_num)
 
 get_data:
-	./user $(get_data_sys_num) 2
+	./user $(get_data_sys_num) 9
 
 invalidate_data:
-	./user $(invalidate_data_sys_num) 7
+	./user $(invalidate_data_sys_num) 5

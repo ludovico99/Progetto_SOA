@@ -30,7 +30,7 @@
 #include "userdatamgmt_driver.c"
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Francesco Quaglia <francesco.quaglia@uniroma2.it>");
+MODULE_AUTHOR("Ludovico Zarrelli");
 MODULE_DESCRIPTION("BLOCK-LEVEL DATA MANAGEMENT SERVICE");
 
 unsigned long the_syscall_table = 0x0;

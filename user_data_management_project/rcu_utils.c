@@ -134,6 +134,7 @@ static struct blk_element *find_min(struct blk_element *node)
 // Funzione per eliminare un nodo con un dato index dall'albero binario
 struct blk_element *delete(struct blk_element *root, int index)
 {
+    struct blk_element *temp = NULL;
     struct blk_element *min_node = NULL;
     if (root == NULL)
     {
@@ -154,11 +155,15 @@ struct blk_element *delete(struct blk_element *root, int index)
         // Node to be deleted has 0 or 1 child
         if (root->left == NULL)
         {
-            return root->right;
+            temp = root->right;
+            kfree(root);
+            return temp;
         }
         else if (root->right == NULL)
         {
-            return root->left;
+            temp = root->left;
+            kfree(root);
+            return temp;
         }
         // Node to be deleted has 2 children
         min_node = find_min(root->right);
@@ -180,24 +185,23 @@ void stampa_albero(struct blk_element *root)
 }
 
 struct blk_element *inorderTraversal(struct blk_element *root)
-{   
-    struct blk_element* left_node = NULL;
+{
+    struct blk_element *left_node = NULL;
     if (root == NULL)
     {
         return NULL;
     }
     // Return a block that is invalid or is valid and free
     if (!get_validity(root->metadata) || (get_validity(root->metadata) && get_free(root->metadata)))
-        return root;  
+        return root;
 
     left_node = inorderTraversal(root->left);
-     if (left_node != NULL) {
+    if (left_node != NULL)
+    {
         return left_node;
     }
     return inorderTraversal(root->right);
-
 }
-
 
 void free_tree(struct blk_element *root)
 {
