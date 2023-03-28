@@ -18,13 +18,14 @@ extern const struct file_operations dev_fops;
     -messages: list that contains blk_element pointer based on the message insertion ordering
     -bdev_metadata: contains the metadata for the block device
     -mount metadata: contains the metadata for the mount operation
-    -blk_rcu_tree: contains the metadata to implement an RCU approach. Its made up of blk_element
+    -rcu_data: contains the metadata to implement an RCU approach. Its made up of blk_element
 */
 
 struct blk_element
 {
     struct blk_element *right;
     struct blk_element *left;
+    struct message * msg;
     uint16_t metadata;
     unsigned int index;
     uint8_t dirtiness; // if 1 the changes should be flushed into the device
@@ -57,7 +58,7 @@ struct mount_metadata
     char *mount_point; 
 }__attribute__((aligned(64)));
 
-struct blk_rcu_tree
+struct rcu_data
 {   
     struct blk_element *head;                                   // pointer to the shared data structure that contains block metadata based on index ordering
     struct message *first;                                     // pointer to the shared data structure that represent a list that is ordered following the message insertion 
@@ -67,7 +68,7 @@ struct blk_rcu_tree
     spinlock_t write_lock;                                       // write lock to be acquired in order to modify the shared data structure
 } __attribute__((aligned(64)));
 
-extern void init(struct blk_rcu_tree *);
+extern void init(struct rcu_data *);
 
 extern struct blk_element *tree_lookup(struct blk_element *, int);
 extern void tree_insert(struct blk_element **, struct blk_element *);

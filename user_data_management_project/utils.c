@@ -19,29 +19,29 @@ static int house_keeper(void *unused)
 redo:
     msleep(PERIOD);
 
-    spin_lock(&the_tree.write_lock);
+    spin_lock(&sh_data.write_lock);
 
-    updated_epoch = (the_tree.next_epoch_index) ? MASK : 0;
+    updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
 
-    the_tree.next_epoch_index += 1;
-    the_tree.next_epoch_index %= 2;
+    sh_data.next_epoch_index += 1;
+    sh_data.next_epoch_index %= 2;
 
-    last_epoch = __atomic_exchange_n(&(the_tree.epoch), updated_epoch, __ATOMIC_SEQ_CST);
+    last_epoch = __atomic_exchange_n(&(sh_data.epoch), updated_epoch, __ATOMIC_SEQ_CST);
     index = (last_epoch & MASK) ? 1 : 0;
     grace_period_threads = last_epoch & (~MASK);
 
     AUDIT printk("house keeping: waiting grace-full period (target index is %ld)\n", grace_period_threads);
-    wait_event_interruptible(wait_queue, the_tree.standing[index] >= grace_period_threads);
-    the_tree.standing[index] = 0;
+    wait_event_interruptible(wait_queue, sh_data.standing[index] >= grace_period_threads);
+    sh_data.standing[index] = 0;
 
-    spin_unlock(&the_tree.write_lock);
+    spin_unlock(&sh_data.write_lock);
 
     goto redo;
 
     return 0;
 }
 
-void init(struct blk_rcu_tree *t)
+void init(struct rcu_data *t)
 {
 
     int i;
@@ -143,12 +143,12 @@ struct blk_element *tree_delete(struct blk_element *root, int index)
     }
     if (index < root->index)
     {
-        root->left = tree_delete (root->left, index);
+        root->left = tree_delete(root->left, index);
         asm volatile("mfence"); // make it visible to readers
     }
     else if (index > root->index)
     {
-        root->right = tree_delete (root->right, index);
+        root->right = tree_delete(root->right, index);
         asm volatile("mfence"); // make it visible to readers
     }
     else
@@ -169,7 +169,7 @@ struct blk_element *tree_delete(struct blk_element *root, int index)
         // Node to be deleted has 2 children
         min_node = find_min(root->right);
         root->index = min_node->index;
-        root->right = tree_delete (root->right, min_node->index);
+        root->right = tree_delete(root->right, min_node->index);
         asm volatile("mfence"); // make it visible to readers
     }
     return root;
@@ -223,8 +223,8 @@ void insert(struct message **head, struct message *to_insert)
     struct message *curr = *head;
 
     if (*head == NULL)
-    {   
-        to_insert -> prev = NULL;
+    {
+        to_insert->prev = NULL;
         *head = to_insert;
         return;
     }
@@ -233,7 +233,7 @@ void insert(struct message **head, struct message *to_insert)
         curr = curr->next;
 
     curr->next = to_insert;
-    to_insert -> prev = curr;
+    to_insert->prev = curr;
 }
 
 void free_list(struct message *head)
@@ -249,24 +249,30 @@ void free_list(struct message *head)
     }
 }
 
-void delete(struct message** head, struct message* to_delete) {
-       if (*head == NULL || to_delete == NULL) {
+void delete(struct message **head, struct message *to_delete)
+{
+
+    if (*head == NULL || to_delete == NULL)
+    {
         return;
     }
 
-    if (*head == to_delete) {
+    if (*head == to_delete)
+    {
         *head = (*head)->next;
         asm volatile("mfence"); // make it visible to readers
     }
 
-    if (to_delete->next != NULL) {
+    if (to_delete->next != NULL)
+    {
         to_delete->next->prev = to_delete->prev;
         asm volatile("mfence"); // make it visible to readers
     }
 
-    if (to_delete->prev != NULL) {
+    if (to_delete->prev != NULL)
+    {
         to_delete->prev->next = to_delete->next;
         asm volatile("mfence"); // make it visible to readers
     }
-
+    AUDIT printk("%s: The delete operation correctly completed", MOD_NAME);
 }

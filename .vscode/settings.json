@@ -6,6 +6,9 @@
         "userdatamgmt.h": "c",
         "scth.h": "c",
         "typeinfo": "c",
-        "type_traits": "c"
+        "type_traits": "c",
+        "concepts": "c",
+        "new": "c",
+        "sched.h": "c"
     }
 }

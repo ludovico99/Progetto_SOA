@@ -35,6 +35,7 @@
 
 struct bdev_metadata bdev_md = {0, NULL, NULL};
 struct mount_metadata mount_md = {0, "/"};
+struct rcu_data sh_data;
 
 static struct super_operations my_super_ops = {};
 
@@ -140,8 +141,8 @@ static void userdatafs_kill_superblock(struct super_block *s)
     kill_block_super(s);
 
     AUDIT printk("%s: Freeing the struct allocated in the kernel memory", MOD_NAME);
-    free_tree(the_tree.head);
-    free_list (the_tree.first);
+    free_tree(sh_data.head);
+    free_list (sh_data.first);
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
 }
@@ -179,7 +180,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
 
         bdev_md.bdev = blkdev_get_by_path(dev_name, FMODE_READ | FMODE_WRITE, NULL);
         bdev_md.path = dev_name;
-        init(&the_tree);
+        init(&sh_data);
         // Initialization of struct blk_metadata
         for (i = 0; i < NBLOCKS; i++)
         {
@@ -203,7 +204,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                 blk_elem->metadata = ((struct dev_blk *)bh->b_data)->metadata;
                 blk_elem->index = i;
                  // AUDIT printk("%s: Block at offset %d (index %d) is %d (1 stays for valid) contains the message = %s\n", MOD_NAME, offset, i, get_validity(blk_elem->blk->metadata), blk_elem->blk->data);
-                tree_insert(&the_tree.head, blk_elem);
+                tree_insert(&sh_data.head, blk_elem);
 
                 if (get_validity(((struct dev_blk *)bh->b_data)->metadata))
                 {
@@ -214,7 +215,8 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                         return ERR_PTR(-ENOMEM);
                     }
                     message->elem = blk_elem;
-                    insert(&the_tree.first, message);
+                    blk_elem -> msg = message;
+                    insert(&sh_data.first, message);
                 }     
             }
             brelse(bh);

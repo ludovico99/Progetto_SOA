@@ -46,7 +46,7 @@
 #define get_length(i) ((uint16_t)(i) & (~LEN_MASK))
 #define set_length(mask,val) (((uint16_t)(mask) & (VALIDITY_MASK | FREE_MASK)) | (((uint16_t)val) & (~LEN_MASK)))
 
-extern struct blk_rcu_tree the_tree;
+extern struct rcu_data sh_data;
 extern struct bdev_metadata bdev_md;
 extern struct mount_metadata mount_md;
 extern char mount_pt[255];

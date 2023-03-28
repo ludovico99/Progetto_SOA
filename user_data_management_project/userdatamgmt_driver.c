@@ -29,8 +29,6 @@
 #include "file_system/userdatamgmt_fs.h"
 #include "userdatamgmt_driver.h"
 
-struct blk_rcu_tree the_tree;
-
 DEFINE_PER_CPU(loff_t, my_off);
 
 static __always_inline loff_t *get_off(void)
@@ -54,7 +52,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     char *destination;
     uint16_t *the_metadata = NULL;
     unsigned long residual_bytes = -1;
-    int ret = -1;
+    int ret = 0;
 
     printk("%s: SYS_PUT_DATA \n", MOD_NAME);
 
@@ -70,42 +68,45 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         return -EINVAL;
 
     __sync_fetch_and_add(&(bdev_md.count), 1);
-    spin_lock(&(the_tree.write_lock));
+    spin_lock(&(sh_data.write_lock));
 
-    the_block = inorderTraversal(the_tree.head);
+    the_block = inorderTraversal(sh_data.head);
 
     if (the_block == NULL)
     {
         printk("%s: No blocks available in the device\n", MOD_NAME);
-        ret = -ENOMEM;
-        goto exit_2;
+        spin_unlock(&(sh_data.write_lock));
+        __sync_fetch_and_sub(&(bdev_md.count), 1);
+        return -ENOMEM;
     }
 
     destination = (char *)kzalloc(BLK_SIZE, GFP_KERNEL);
 
     if (!destination)
     {
-
         printk("%s: Kzalloc has failed\n", MOD_NAME);
-        ret = -ENOMEM;
-        goto exit_2;
+        spin_unlock(&(sh_data.write_lock));
+         __sync_fetch_and_sub(&(bdev_md.count), 1);
+        return -ENOMEM;
     }
     residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
     AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
 
-    AUDIT printk("%s: Starting the append message phase", MOD_NAME);
-
-    the_head = &the_tree.first;
     if (get_validity(the_block->metadata))
-        the_message = container_of(&the_block, struct message, elem);
+        the_message = the_block->msg;
     else
         the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
-    
-    // Insertion in the messages list 
+    the_message->elem = the_block;
+    asm volatile("mfence");
+    the_block -> msg = the_message;
+    asm volatile("mfence");
+    // Insertion in the messages list
+    the_head = &sh_data.first;
     if (*the_head == NULL)
-    {   
-        the_message -> prev = NULL;
-        *the_head = the_message;  
+    {
+        the_message->prev = NULL;
+        // asm volatile("mfence");
+        *the_head = the_message;
         asm volatile("mfence");
         goto cont;
     }
@@ -114,7 +115,8 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         curr = curr->next;
 
     curr->next = the_message;
-    the_message -> prev = curr;
+    // asm volatile("mfence");
+    the_message->prev = curr;
     asm volatile("mfence");
 
 cont:
@@ -122,7 +124,7 @@ cont:
     ret = get_offset(the_block->index);
     the_metadata = &(the_block->metadata);
 
-    AUDIT printk("%s: Old metadata for block at index %d (index %d) are %x", MOD_NAME, ret, get_index(ret), *the_metadata);
+    AUDIT printk("%s: Old metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), *the_metadata);
 
     *the_metadata = set_valid(*the_metadata);
     // asm volatile("mfence");
@@ -134,6 +136,7 @@ cont:
     asm volatile("mfence");
 
     AUDIT printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), *the_metadata);
+    spin_unlock(&(sh_data.write_lock));
 
     memcpy(destination, the_metadata, MD_SIZE);
 
@@ -169,8 +172,6 @@ cont:
     brelse(bh);
 exit:
     kfree(destination);
-exit_2:
-    spin_unlock(&(the_tree.write_lock));
     __sync_fetch_and_sub(&(bdev_md.count), 1);
     return ret;
 }
@@ -210,10 +211,10 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     if (size < 0 || offset > NBLOCKS - 1 || offset < 0)
         return -EINVAL;
 
-    epoch = &the_tree.epoch;
+    epoch = &sh_data.epoch;
     my_epoch = __sync_fetch_and_add(epoch, 1);
 
-    the_block = tree_lookup(the_tree.head, offset);
+    the_block = tree_lookup(sh_data.head, offset);
 
     if (the_block == NULL)
         return -EINVAL;
@@ -251,7 +252,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     filp_close(filp, NULL);
     kfree(mount_point);
     index = (my_epoch & MASK) ? 1 : 0;
-    __sync_fetch_and_add(&(the_tree.standing[index]), 1);
+    __sync_fetch_and_add(&(sh_data.standing[index]), 1);
     return ret;
 }
 
@@ -269,7 +270,7 @@ asmlinkage long sys_invalidate_data(int offset)
 #endif
 
     struct buffer_head *bh;
-    struct message * the_message;
+    struct message *the_message;
     struct blk_element *the_block = NULL;
     struct dev_blk *blk = NULL;
     unsigned long last_epoch;
@@ -290,45 +291,48 @@ asmlinkage long sys_invalidate_data(int offset)
         return -EINVAL;
 
     __sync_fetch_and_add(&(bdev_md.count), 1); // The unmount operation is not permitted
-    spin_lock(&(the_tree.write_lock));
+    spin_lock(&(sh_data.write_lock));
 
-    AUDIT printk("%s: Traverse the tree to find block at offset %d", MOD_NAME, offset);
+    AUDIT printk("%s: Traverse the tree to find block at index %d", MOD_NAME, offset);
 
-    the_block = tree_lookup(the_tree.head, offset);
-    // stampa_albero(the_tree.head);
+    the_block = tree_lookup(sh_data.head, offset);
     if (!get_validity(the_block->metadata))
     {
-        spin_unlock(&(the_tree.write_lock));
+        spin_unlock(&(sh_data.write_lock));
         __sync_fetch_and_sub(&(bdev_md.count), 1);
         return -ENODATA;
     }
-   
+
     the_block->metadata = set_invalid(the_block->metadata);
-    asm volatile("mfence"); // make it visible to readers
+    // asm volatile("mfence"); // make it visible to readers
     the_block->dirtiness = 1;
     asm volatile("mfence"); // make it visible to readers
 
-    the_message = container_of(&the_block, struct message, elem);
-    delete(&the_tree.first, the_message);
-    
+    AUDIT printk("%s: Deleting the message from valid messages list...", MOD_NAME);
+
+    the_message = the_block->msg;
+    delete (&sh_data.first, the_message);
+
     //  move to a new epoch - still under write lock
-    updated_epoch = (the_tree.next_epoch_index) ? MASK : 0;
+    updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
 
-    the_tree.next_epoch_index += 1;
-    the_tree.next_epoch_index %= 2;
+    sh_data.next_epoch_index += 1;
+    sh_data.next_epoch_index %= 2;
 
-    last_epoch = __atomic_exchange_n(&(the_tree.epoch), updated_epoch, __ATOMIC_SEQ_CST);
+    last_epoch = __atomic_exchange_n(&(sh_data.epoch), updated_epoch, __ATOMIC_SEQ_CST);
     index = (last_epoch & MASK) ? 1 : 0;
     grace_period_threads = last_epoch & (~MASK);
 
     AUDIT printk("%s: Invalidation: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
 
-    wait_event_interruptible(invalidate_queue, the_tree.standing[index] >= grace_period_threads);
-    the_tree.standing[index] = 0;
+    wait_event_interruptible(invalidate_queue, sh_data.standing[index] >= grace_period_threads);
+    sh_data.standing[index] = 0;
 
-    spin_unlock((&the_tree.write_lock));
+    spin_unlock((&sh_data.write_lock));
 
-    if (the_message) kfree(the_message);
+    AUDIT printk("%s: Removing invalidated message from valid messages list...\n", MOD_NAME);
+    if (the_message)
+        kfree(the_message);
 
     // FLUSHING METADATA CHANGES INTO THE DEVICE
     printk("%s: Flushing metadata changes into the device", MOD_NAME);
@@ -380,7 +384,6 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     struct inode *the_inode = filp->f_inode;
     uint64_t file_size = the_inode->i_size;
     unsigned long my_epoch;
-    // const char *dev_name = filp->f_path.dentry->d_iname;
     struct super_block *sb = filp->f_path.dentry->d_inode->i_sb;
     int ret = 0;
     loff_t offset;
@@ -409,20 +412,19 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     if (block_to_read > NBLOCKS + 2)
         return 0; // Consistency check
 
-    my_epoch = __sync_fetch_and_add(&(the_tree.epoch), 1);
+    my_epoch = __sync_fetch_and_add(&(sh_data.epoch), 1);
     AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
 
-    the_block = tree_lookup(the_tree.head, get_index(block_to_read));
+    the_block = tree_lookup(sh_data.head, get_index(block_to_read));
 
     if (the_block == NULL || !get_validity(the_block->metadata) || get_free(the_block->metadata))
     {
-        AUDIT printk("%s: The block at index %d is invalid or free", MOD_NAME, block_to_read);
+        AUDIT printk("%s: The block at offset %d is invalid or free", MOD_NAME, block_to_read);
         len = strlen("\n");
         ret = copy_to_user(buf, "\n", len);
         *my_off_ptr += BLK_SIZE;
         goto exit;
     }
-
     bh = (struct buffer_head *)sb_bread(sb, block_to_read);
     if (!bh)
     {
@@ -448,19 +450,25 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
             len = 0;
 
         ret = copy_to_user(buf, blk->data + offset, len);
-        if (ret == 0)
-            *my_off_ptr += BLK_SIZE - offset;
+        if (ret == 0 && the_block->msg->next == NULL)
+        {
+            *my_off_ptr = file_size;
+            goto exit_2;
+        }
+        else if (ret == 0)
+            *my_off_ptr = (the_block->msg->next->elem->index) * BLK_SIZE;
+        //*my_off_ptr += BLK_SIZE - offset;
         else
             *my_off_ptr += len - ret;
     }
     else
         *my_off_ptr += BLK_SIZE;
-
+exit_2:
     brelse(bh);
 exit:
     *off = *my_off_ptr;
     index = (my_epoch & MASK) ? 1 : 0;
-    __sync_fetch_and_add(&(the_tree.standing[index]), 1);
+    __sync_fetch_and_add(&(sh_data.standing[index]), 1);
     return len - ret;
 }
 

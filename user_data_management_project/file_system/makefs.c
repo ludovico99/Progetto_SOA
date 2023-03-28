@@ -9,27 +9,27 @@
 
 #include "userdatamgmt_fs.h"
 
-char* testo[] = {
-"I have a dream  - Martin Luther King Jr\n",
-"Ask not what your country can do for you, ask what you can do for your country  - John F. Kennedy\n",
-"All men are created equal - Thomas Jefferson\n",
-"The only thing we have to fear is fear itself - Franklin D. Roosevelt\n",
-"Four score and seven years ago - Abraham Lincoln\n",
-"We shall fight on the beaches - Winston Churchill\n",
-"Injustice anywhere is a threat to justice everywhere - Martin Luther King Jr\n",
-"Veni, vidi, vici - Julius Caesar\n",
-"Give me liberty or give me death - Patrick Henry\n",
-"I came, I saw, I conquered - Julius Caesar\n",
-"Tear down this wall! - Ronald Reagan\n",
-"Et tu, Brute? - Julius Caesar\n",
-"It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. - Jane Austen\n",
-"The fault, dear Brutus, is not in our stars, but in ourselves. - William Shakespeare\n",
-"To be or not to be, that is the question. - William Shakespeare\n",
-"Cogito, ergo sum - René Descartes\n",
-"Elementary, my dear Watson - Sherlock Holmes\n",
-"No man is an island - John Donne\n",
-"We hold these truths to be self-evident, that all men are created equal - Thomas Jefferson\n",
-"Yes we can - Barack Obama\n"};
+char *testo[] = {
+	"I have a dream  - Martin Luther King Jr\n",
+	"Ask not what your country can do for you, ask what you can do for your country  - John F. Kennedy\n",
+	"All men are created equal - Thomas Jefferson\n",
+	"The only thing we have to fear is fear itself - Franklin D. Roosevelt\n",
+	"Four score and seven years ago - Abraham Lincoln\n",
+	"We shall fight on the beaches - Winston Churchill\n",
+	"Injustice anywhere is a threat to justice everywhere - Martin Luther King Jr\n",
+	"Veni, vidi, vici - Julius Caesar\n",
+	"Give me liberty or give me death - Patrick Henry\n",
+	"I came, I saw, I conquered - Julius Caesar\n",
+	"Tear down this wall! - Ronald Reagan\n",
+	"Et tu, Brute? - Julius Caesar\n",
+	"It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. - Jane Austen\n",
+	"The fault, dear Brutus, is not in our stars, but in ourselves. - William Shakespeare\n",
+	"To be or not to be, that is the question. - William Shakespeare\n",
+	"Cogito, ergo sum - René Descartes\n",
+	"Elementary, my dear Watson - Sherlock Holmes\n",
+	"No man is an island - John Donne\n",
+	"We hold these truths to be self-evident, that all men are created equal - Thomas Jefferson\n",
+	"Yes we can - Barack Obama\n"};
 
 int main(int argc, char *argv[])
 {
@@ -106,22 +106,15 @@ int main(int argc, char *argv[])
 
 	// write file datablocks
 	for (int i = 0; i < NBLOCKS; i++)
-	{	
-		if (MD_SIZE + strlen(testo[i])> BLK_SIZE)
+	{
+		if (MD_SIZE + strlen(testo[i]) > BLK_SIZE)
 		{
 			printf("The block is too small");
 			return -1;
 		}
 
-		if (i == 0){
-			metadata = set_valid(metadata);
-			metadata = set_not_free(metadata);
-		}
-		else{
-			metadata = set_valid(metadata);
-			metadata = set_not_free(metadata);
-		}
-		
+		metadata = set_valid(metadata);
+		metadata = set_not_free(metadata);
 
 		metadata = set_length(metadata, strlen(testo[i]));
 		ret = write(fd, &metadata, MD_SIZE);
