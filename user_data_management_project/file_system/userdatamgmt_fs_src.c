@@ -33,7 +33,7 @@
 #include "userdatamgmt_fs.h"
 #include "../userdatamgmt_driver.h"
 
-struct bdev_metadata bdev_md = {0,NULL, NULL};
+struct bdev_metadata bdev_md = {0, NULL, NULL};
 struct mount_metadata mount_md = {0, "/"};
 
 static struct super_operations my_super_ops = {};
@@ -123,7 +123,7 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
 
 static void userdatafs_kill_superblock(struct super_block *s)
 {
-    //wait_queue_head_t unmount_queue;
+    // wait_queue_head_t unmount_queue;
     DECLARE_WAIT_QUEUE_HEAD(unmount_queue);
     int mnt = -1;
     mnt = __sync_val_compare_and_swap(&mount_md.mounted, 1, 0);
@@ -134,18 +134,17 @@ static void userdatafs_kill_superblock(struct super_block *s)
     }
 
     printk("%s: waiting the pending threads (%d)...", MOD_NAME, bdev_md.count);
-    //AUDIT printk("%s: count is %d",MOD_NAME, bdev_md.count);
+    // AUDIT printk("%s: count is %d",MOD_NAME, bdev_md.count);
     wait_event_interruptible(unmount_queue, bdev_md.count == 0);
 
     kill_block_super(s);
-   
+
     AUDIT printk("%s: Freeing the struct allocated in the kernel memory", MOD_NAME);
     free_tree(the_tree.head);
-    
+    free_list (the_tree.first);
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
 }
-
 
 // called on file system mounting
 struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data)
@@ -155,8 +154,9 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
     int mnt;
     int i = 0;
     int offset;
-    struct buffer_head* bh;
-    struct blk_element * blk_elem;
+    struct buffer_head *bh;
+    struct blk_element *blk_elem;
+    struct message *message;
 
     mnt = __sync_val_compare_and_swap(&mount_md.mounted, 0, 1);
     if (mnt == 1)
@@ -166,20 +166,20 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
     }
 
     ret = mount_bdev(fs_type, flags, dev_name, data, userdatafs_fill_super);
-    
+
     if (unlikely(IS_ERR(ret)))
         printk("%s: error mounting userdatafs", MOD_NAME);
     else
-    {   
+    {
         mount_md.mount_point = mount_pt;
-        AUDIT printk("%s: userdatafs is succesfully mounted on from device %s and mount directory %s\n", MOD_NAME, dev_name, mount_md.mount_point );
-        
+        AUDIT printk("%s: userdatafs is succesfully mounted on from device %s and mount directory %s\n", MOD_NAME, dev_name, mount_md.mount_point);
+
         // initiliazation of the RCU tree
         // Start filling the block device representation in RAM
 
-        bdev_md.bdev = blkdev_get_by_path(dev_name, FMODE_READ|FMODE_WRITE, NULL);
+        bdev_md.bdev = blkdev_get_by_path(dev_name, FMODE_READ | FMODE_WRITE, NULL);
         bdev_md.path = dev_name;
-        rcu_tree_init(&the_tree);
+        init(&the_tree);
         // Initialization of struct blk_metadata
         for (i = 0; i < NBLOCKS; i++)
         {
@@ -195,19 +195,27 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
             {
                 // AUDIT printk("%s: retrieved the block at offset %d (index %d)\n", MOD_NAME, offset, i);
                 blk_elem = (struct blk_element *)kzalloc(sizeof(struct blk_element), GFP_KERNEL);
-
                 if (!blk_elem)
                 {
                     printk("%s: Error allocationg blk_element struct\n", MOD_NAME);
                     return ERR_PTR(-ENOMEM);
                 }
-
                 blk_elem->metadata = ((struct dev_blk *)bh->b_data)->metadata;
                 blk_elem->index = i;
+                 // AUDIT printk("%s: Block at offset %d (index %d) is %d (1 stays for valid) contains the message = %s\n", MOD_NAME, offset, i, get_validity(blk_elem->blk->metadata), blk_elem->blk->data);
+                tree_insert(&the_tree.head, blk_elem);
 
-                // AUDIT printk("%s: Block at offset %d (index %d) is %d (1 stays for valid) contains the message = %s\n", MOD_NAME, offset, i, get_validity(blk_elem->blk->metadata), blk_elem->blk->data);
-
-                insert(&the_tree.head, blk_elem);
+                if (get_validity(((struct dev_blk *)bh->b_data)->metadata))
+                {
+                    message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
+                    if (!message)
+                    {
+                        printk("%s: Error allocationg message struct\n", MOD_NAME);
+                        return ERR_PTR(-ENOMEM);
+                    }
+                    message->elem = blk_elem;
+                    insert(&the_tree.first, message);
+                }     
             }
             brelse(bh);
         }

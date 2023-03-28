@@ -45,17 +45,20 @@ __SYSCALL_DEFINEx(2, _put_data, char *, source, ssize_t, size)
 asmlinkage int sys_put_data(char *source, ssize_t size)
 {
 #endif
-    struct blk_element *the_block;
-    struct dev_blk* the_dev_blk;
-    struct buffer_head * bh;
-    char * destination;
+    struct blk_element *the_block = NULL;
+    struct message **the_head = NULL;
+    struct message *curr = NULL;
+    struct message *the_message = NULL;
+    struct dev_blk *the_dev_blk;
+    struct buffer_head *bh;
+    char *destination;
     uint16_t *the_metadata = NULL;
     unsigned long residual_bytes = -1;
     int ret = -1;
 
     printk("%s: SYS_PUT_DATA \n", MOD_NAME);
 
-     if (!mount_md.mounted)
+    if (!mount_md.mounted)
     {
         printk("%s: The device is not mounted", MOD_NAME);
         return -ENODEV;
@@ -66,46 +69,75 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     if (size < 0)
         return -EINVAL;
 
-    __sync_fetch_and_add(&(bdev_md.count),1);
+    __sync_fetch_and_add(&(bdev_md.count), 1);
     spin_lock(&(the_tree.write_lock));
 
     the_block = inorderTraversal(the_tree.head);
 
-    if (the_block == NULL) {
-        printk("%s: No blocks available in the device\n",MOD_NAME);
+    if (the_block == NULL)
+    {
+        printk("%s: No blocks available in the device\n", MOD_NAME);
         ret = -ENOMEM;
         goto exit_2;
     }
 
-    destination = (char*) kzalloc(BLK_SIZE, GFP_KERNEL); 
+    destination = (char *)kzalloc(BLK_SIZE, GFP_KERNEL);
 
-    if (!destination){
-    
-        printk("%s: Kzalloc has failed\n",MOD_NAME);
+    if (!destination)
+    {
+
+        printk("%s: Kzalloc has failed\n", MOD_NAME);
         ret = -ENOMEM;
         goto exit_2;
-   }
+    }
     residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
     AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
 
+    AUDIT printk("%s: Starting the append message phase", MOD_NAME);
+
+    the_head = &the_tree.first;
+    if (get_validity(the_block->metadata))
+        the_message = container_of(&the_block, struct message, elem);
+    else
+        the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
+    
+    // Insertion in the messages list 
+    if (*the_head == NULL)
+    {   
+        the_message -> prev = NULL;
+        *the_head = the_message;  
+        asm volatile("mfence");
+        goto cont;
+    }
+    curr = *the_head;
+    while (curr->next != NULL)
+        curr = curr->next;
+
+    curr->next = the_message;
+    the_message -> prev = curr;
+    asm volatile("mfence");
+
+cont:
+
     ret = get_offset(the_block->index);
-    the_metadata = &(the_block -> metadata);
+    the_metadata = &(the_block->metadata);
 
     AUDIT printk("%s: Old metadata for block at index %d (index %d) are %x", MOD_NAME, ret, get_index(ret), *the_metadata);
 
-    the_block ->dirtiness = 1;
-    asm volatile("mfence");
     *the_metadata = set_valid(*the_metadata);
-    *the_metadata = set_not_free(*the_metadata); 
+    // asm volatile("mfence");
+    *the_metadata = set_not_free(*the_metadata);
+    // asm volatile("mfence");
     *the_metadata = set_length(*the_metadata, size);
+    // asm volatile("mfence");
+    the_block->dirtiness = 1;
     asm volatile("mfence");
 
     AUDIT printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), *the_metadata);
 
     memcpy(destination, the_metadata, MD_SIZE);
-  
-    printk("%s: Flushing changes into the device",MOD_NAME);
 
+    printk("%s: Flushing changes into the device", MOD_NAME);
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, ret);
     if (!bh)
     {
@@ -120,26 +152,26 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         memcpy(bh->b_data, destination, BLK_SIZE);
 #ifndef SYNC_FLUSH
         mark_buffer_dirty(bh);
-        the_block ->dirtiness = 0;
+        the_block->dirtiness = 0;
         asm volatile("mfence");
         AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
 #else
         if (sync_dirty_buffer(bh) == 0)
         {
             AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
-            the_block ->dirtiness = 0;
+            the_block->dirtiness = 0;
             asm volatile("mfence");
         }
         else
             printk("%s: Synchronous flush not succeded", MOD_NAME);
 #endif
     }
-    brelse(bh);  
+    brelse(bh);
 exit:
     kfree(destination);
 exit_2:
     spin_unlock(&(the_tree.write_lock));
-    __sync_fetch_and_sub(&(bdev_md.count),1);
+    __sync_fetch_and_sub(&(bdev_md.count), 1);
     return ret;
 }
 
@@ -181,7 +213,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     epoch = &the_tree.epoch;
     my_epoch = __sync_fetch_and_add(epoch, 1);
 
-    the_block = lookup(the_tree.head, offset);
+    the_block = tree_lookup(the_tree.head, offset);
 
     if (the_block == NULL)
         return -EINVAL;
@@ -237,6 +269,7 @@ asmlinkage long sys_invalidate_data(int offset)
 #endif
 
     struct buffer_head *bh;
+    struct message * the_message;
     struct blk_element *the_block = NULL;
     struct dev_blk *blk = NULL;
     unsigned long last_epoch;
@@ -256,26 +289,29 @@ asmlinkage long sys_invalidate_data(int offset)
     if (offset > NBLOCKS - 1 || offset < 0)
         return -EINVAL;
 
-    __sync_fetch_and_add(&(bdev_md.count),1); //The unmount operation is not permitted
+    __sync_fetch_and_add(&(bdev_md.count), 1); // The unmount operation is not permitted
     spin_lock(&(the_tree.write_lock));
 
     AUDIT printk("%s: Traverse the tree to find block at offset %d", MOD_NAME, offset);
-    
-    the_block = lookup(the_tree.head, offset);
-   //stampa_albero(the_tree.head);
-    the_block->dirtiness = 1;
-    asm volatile("mfence"); // make it visible to readers
 
+    the_block = tree_lookup(the_tree.head, offset);
+    // stampa_albero(the_tree.head);
     if (!get_validity(the_block->metadata))
     {
         spin_unlock(&(the_tree.write_lock));
-        __sync_fetch_and_sub(&(bdev_md.count),1);
+        __sync_fetch_and_sub(&(bdev_md.count), 1);
         return -ENODATA;
     }
+   
     the_block->metadata = set_invalid(the_block->metadata);
     asm volatile("mfence"); // make it visible to readers
+    the_block->dirtiness = 1;
+    asm volatile("mfence"); // make it visible to readers
 
-    // move to a new epoch - still under write lock
+    the_message = container_of(&the_block, struct message, elem);
+    delete(&the_tree.first, the_message);
+    
+    //  move to a new epoch - still under write lock
     updated_epoch = (the_tree.next_epoch_index) ? MASK : 0;
 
     the_tree.next_epoch_index += 1;
@@ -285,21 +321,22 @@ asmlinkage long sys_invalidate_data(int offset)
     index = (last_epoch & MASK) ? 1 : 0;
     grace_period_threads = last_epoch & (~MASK);
 
-    AUDIT printk("%s: Deletion: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
+    AUDIT printk("%s: Invalidation: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
 
     wait_event_interruptible(invalidate_queue, the_tree.standing[index] >= grace_period_threads);
-
     the_tree.standing[index] = 0;
-    asm volatile("mfence"); // make it visible to readers
-    //if (the_block) delete(the_tree.head, offset);
-    
+
+    spin_unlock((&the_tree.write_lock));
+
+    if (the_message) kfree(the_message);
+
     // FLUSHING METADATA CHANGES INTO THE DEVICE
-    printk("%s: Flushing metadata changes into the device",MOD_NAME);
+    printk("%s: Flushing metadata changes into the device", MOD_NAME);
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, get_offset(offset));
     if (!bh)
     {
         AUDIT printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
-        __sync_fetch_and_sub(&(bdev_md.count),1);
+        __sync_fetch_and_sub(&(bdev_md.count), 1);
         return -EIO;
     }
     blk = (struct dev_blk *)bh->b_data;
@@ -309,14 +346,14 @@ asmlinkage long sys_invalidate_data(int offset)
         memcpy(bh->b_data, &the_block->metadata, MD_SIZE);
 #ifndef SYNC_FLUSH
         mark_buffer_dirty(bh);
-        the_block ->dirtiness = 0;
+        the_block->dirtiness = 0;
         asm volatile("mfence");
         AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
 #else
         if (sync_dirty_buffer(bh) == 0)
         {
             AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
-            the_block ->dirtiness = 0;
+            the_block->dirtiness = 0;
             asm volatile("mfence");
         }
         else
@@ -324,8 +361,7 @@ asmlinkage long sys_invalidate_data(int offset)
 #endif
     }
     brelse(bh);
-    spin_unlock((&the_tree.write_lock));
-    __sync_fetch_and_sub(&(bdev_md.count),1);
+    __sync_fetch_and_sub(&(bdev_md.count), 1);
     return 1;
 }
 
@@ -376,8 +412,8 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     my_epoch = __sync_fetch_and_add(&(the_tree.epoch), 1);
     AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
 
-    the_block = lookup(the_tree.head, get_index(block_to_read));
- 
+    the_block = tree_lookup(the_tree.head, get_index(block_to_read));
+
     if (the_block == NULL || !get_validity(the_block->metadata) || get_free(the_block->metadata))
     {
         AUDIT printk("%s: The block at index %d is invalid or free", MOD_NAME, block_to_read);
@@ -434,7 +470,7 @@ static int dev_release(struct inode *inode, struct file *filp)
     AUDIT printk("%s: Device release has been invoked: the thread %d trying to release the device file\n ", MOD_NAME, current->pid);
 
     if (!mount_md.mounted)
-    {   
+    {
         printk("%s: The device is not mounted", MOD_NAME);
         return -ENODEV;
     }

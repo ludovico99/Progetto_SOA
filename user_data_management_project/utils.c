@@ -1,9 +1,9 @@
-#include <linux/math.h>
-#include <linux/log2.h>
+// #include <linux/math.h>
+// #include <linux/log2.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/kthread.h>
 
-#include "linux/kthread.h"
 #include "userdatamgmt_driver.h"
 
 static int house_keeper(void *unused)
@@ -41,7 +41,7 @@ redo:
     return 0;
 }
 
-void rcu_tree_init(struct blk_rcu_tree *t)
+void init(struct blk_rcu_tree *t)
 {
 
     int i;
@@ -55,6 +55,7 @@ void rcu_tree_init(struct blk_rcu_tree *t)
         t->standing[i] = 0x0;
     }
     t->head = NULL;
+    t->first = NULL;
     spin_lock_init(&t->write_lock);
     the_daemon = kthread_create(house_keeper, NULL, name);
 
@@ -70,7 +71,7 @@ void rcu_tree_init(struct blk_rcu_tree *t)
     }
 }
 
-struct blk_element *lookup(struct blk_element *root, int index)
+struct blk_element *tree_lookup(struct blk_element *root, int index)
 {
 
     if (root == NULL)
@@ -81,12 +82,12 @@ struct blk_element *lookup(struct blk_element *root, int index)
     if (index > root->index)
     {
         // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
-        return lookup(root->right, index);
+        return tree_lookup(root->right, index);
     }
     else if (index < root->index)
     {
         // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
-        return lookup(root->left, index);
+        return tree_lookup(root->left, index);
     }
     else
     {
@@ -95,7 +96,7 @@ struct blk_element *lookup(struct blk_element *root, int index)
     }
 }
 
-void insert(struct blk_element **root, struct blk_element *newNode)
+void tree_insert(struct blk_element **root, struct blk_element *newNode)
 {
     int index = newNode->index;
     // AUDIT printk("%s: insert operation started for block at index %d", MOD_NAME, index);
@@ -109,12 +110,12 @@ void insert(struct blk_element **root, struct blk_element *newNode)
     if (index > (*root)->index)
     {
         // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
-        insert(&((*root)->right), newNode);
+        tree_insert(&((*root)->right), newNode);
     }
     else if (index < (*root)->index)
     {
         // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
-        insert(&((*root)->left), newNode);
+        tree_insert(&((*root)->left), newNode);
     }
 }
 
@@ -132,7 +133,7 @@ static struct blk_element *find_min(struct blk_element *node)
 }
 
 // Funzione per eliminare un nodo con un dato index dall'albero binario
-struct blk_element *delete(struct blk_element *root, int index)
+struct blk_element *tree_delete(struct blk_element *root, int index)
 {
     struct blk_element *temp = NULL;
     struct blk_element *min_node = NULL;
@@ -142,12 +143,12 @@ struct blk_element *delete(struct blk_element *root, int index)
     }
     if (index < root->index)
     {
-        root->left = delete (root->left, index);
+        root->left = tree_delete (root->left, index);
         asm volatile("mfence"); // make it visible to readers
     }
     else if (index > root->index)
     {
-        root->right = delete (root->right, index);
+        root->right = tree_delete (root->right, index);
         asm volatile("mfence"); // make it visible to readers
     }
     else
@@ -156,19 +157,19 @@ struct blk_element *delete(struct blk_element *root, int index)
         if (root->left == NULL)
         {
             temp = root->right;
-            kfree(root);
+            // kfree(root);
             return temp;
         }
         else if (root->right == NULL)
         {
             temp = root->left;
-            kfree(root);
+            // kfree(root);
             return temp;
         }
         // Node to be deleted has 2 children
         min_node = find_min(root->right);
         root->index = min_node->index;
-        root->right = delete (root->right, min_node->index);
+        root->right = tree_delete (root->right, min_node->index);
         asm volatile("mfence"); // make it visible to readers
     }
     return root;
@@ -214,4 +215,58 @@ void free_tree(struct blk_element *root)
     free_tree(root->right);
 
     kfree(root);
+}
+
+void insert(struct message **head, struct message *to_insert)
+{
+
+    struct message *curr = *head;
+
+    if (*head == NULL)
+    {   
+        to_insert -> prev = NULL;
+        *head = to_insert;
+        return;
+    }
+
+    while (curr->next != NULL)
+        curr = curr->next;
+
+    curr->next = to_insert;
+    to_insert -> prev = curr;
+}
+
+void free_list(struct message *head)
+{
+    struct message *curr = head;
+    struct message *next;
+
+    while (curr != NULL)
+    {
+        next = curr->next;
+        kfree(curr);
+        curr = next;
+    }
+}
+
+void delete(struct message** head, struct message* to_delete) {
+       if (*head == NULL || to_delete == NULL) {
+        return;
+    }
+
+    if (*head == to_delete) {
+        *head = (*head)->next;
+        asm volatile("mfence"); // make it visible to readers
+    }
+
+    if (to_delete->next != NULL) {
+        to_delete->next->prev = to_delete->prev;
+        asm volatile("mfence"); // make it visible to readers
+    }
+
+    if (to_delete->prev != NULL) {
+        to_delete->prev->next = to_delete->next;
+        asm volatile("mfence"); // make it visible to readers
+    }
+
 }
