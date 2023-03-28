@@ -63,6 +63,7 @@ void *my_thread(void *index)
         {
       
         case GET_DATA:
+            memset(buffer,0,SIZE);
             ret = syscall(GET_DATA, offset, buffer, SIZE);
             if (ret >= 0)
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
