@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
-		metadata = set_invalid(metadata);
+		metadata = set_valid(metadata);
 		metadata = set_not_free(metadata);
 
 		metadata = set_length(metadata, strlen(testo[i]));

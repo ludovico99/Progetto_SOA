@@ -218,24 +218,20 @@ void free_tree(struct blk_element *root)
     kfree(root);
 }
 
-void insert(struct message **head, struct message *to_insert)
+void insert(struct message **head, struct message** tail, struct message *to_insert)
 {
 
-    struct message *curr = *head;
-
-    if (*head == NULL)
-    {
-        to_insert->prev = NULL;
-        *head = to_insert;
-        return;
-    }
-
-    while (curr->next != NULL)
-        curr = curr->next;
-
-    curr->next = to_insert;
-    to_insert->prev = curr;
+   to_insert->prev = *tail;
+   to_insert->next = NULL;
+   if (*tail == NULL) {
+      *head = to_insert;
+      *tail = to_insert;
+      return;
+   }
+   (*tail)->next = to_insert;
+   *tail = to_insert;
 }
+
 
 void free_list(struct message *head)
 {
@@ -250,7 +246,7 @@ void free_list(struct message *head)
     }
 }
 
-void delete(struct message **head, struct message *to_delete)
+void delete(struct message **head, struct message **tail, struct message *to_delete)
 {
 
     if (*head == NULL || to_delete == NULL)
@@ -261,6 +257,12 @@ void delete(struct message **head, struct message *to_delete)
     if (*head == to_delete)
     {
         *head = (*head)->next;
+        asm volatile("mfence"); // make it visible to readers
+    }
+
+    if (*tail == to_delete)
+    {
+        *tail = (*tail) -> prev;
         asm volatile("mfence"); // make it visible to readers
     }
 

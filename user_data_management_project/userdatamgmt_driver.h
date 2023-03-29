@@ -62,6 +62,7 @@ struct rcu_data
 {   
     struct blk_element *head;                                   // pointer to the shared data structure that contains block metadata based on index ordering
     struct message *first;                                     // pointer to the shared data structure that represent a list that is ordered following the message insertion 
+    struct message *last; 
     unsigned long standing[EPOCHS] __attribute__((aligned(64))); // In memory alignment to reduce CC transactions
     unsigned long epoch __attribute__((aligned(64)));            // In memory alignment to reduce CC transactions
     int next_epoch_index;                                        // index of the next epoch
@@ -77,9 +78,9 @@ extern struct blk_element* inorderTraversal(struct blk_element*);
 extern void stampa_albero(struct blk_element *root);
 extern void free_tree(struct blk_element *);
 
-extern void insert(struct message **, struct message *);
+extern void insert(struct message **, struct message **,struct message *);
 extern void free_list(struct message*);
-extern void delete(struct message**, struct message*);
+extern void delete(struct message**,struct message **, struct message*);
 void stampa_lista(struct message *);
 
 

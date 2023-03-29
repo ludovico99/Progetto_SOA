@@ -216,7 +216,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     }
                     message->elem = blk_elem;
                     blk_elem -> msg = message;
-                    insert(&sh_data.first, message);
+                    insert(&sh_data.first,&sh_data.last, message);
                 }     
             }
             brelse(bh);

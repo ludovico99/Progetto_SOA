@@ -45,7 +45,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 #endif
     struct blk_element *the_block = NULL;
     struct message **the_head = NULL;
-    struct message *curr = NULL;
+    struct message **the_tail = NULL;
     struct message *the_message = NULL;
     struct dev_blk *the_dev_blk;
     struct buffer_head *bh;
@@ -101,23 +101,21 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     asm volatile("mfence");
     the_block -> msg = the_message;
     asm volatile("mfence");
-    // Insertion in the messages list
+
+    // Insertion with cost O(1) in the messages list
     the_head = &sh_data.first;
-    if (*the_head == NULL)
-    {
-        the_message->prev = NULL;
-        // asm volatile("mfence");
+    the_tail = &sh_data.last;
+    the_message -> prev = *the_tail;
+    asm volatile("mfence");
+    if (*the_tail == NULL) {
         *the_head = the_message;
-        asm volatile("mfence");
+        //asm volatile("mfence");
+        *the_tail = the_message;
+        //asm volatile("mfence");
         goto cont;
     }
-    curr = *the_head;
-    while (curr->next != NULL)
-        curr = curr->next;
-
-    curr->next = the_message;
-    // asm volatile("mfence");
-    the_message->prev = curr;
+    (*the_tail)->next = the_message;
+    *the_tail = the_message;
     asm volatile("mfence");
     stampa_lista (sh_data.first);
 cont:
@@ -312,7 +310,7 @@ asmlinkage long sys_invalidate_data(int offset)
     AUDIT printk("%s: Deleting the message from valid messages list...", MOD_NAME);
 
     the_message = the_block->msg;
-    delete (&sh_data.first, the_message);
+    delete (&sh_data.first,&sh_data.last, the_message);
     stampa_lista (sh_data.first);
     //  move to a new epoch - still under write lock
     updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
