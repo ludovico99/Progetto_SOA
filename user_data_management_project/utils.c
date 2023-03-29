@@ -175,6 +175,7 @@ struct blk_element *tree_delete(struct blk_element *root, int index)
     return root;
 }
 
+//For debugging purposes
 void stampa_albero(struct blk_element *root)
 {
     if (root != NULL)
@@ -275,4 +276,13 @@ void delete(struct message **head, struct message *to_delete)
         asm volatile("mfence"); // make it visible to readers
     }
     AUDIT printk("%s: The delete operation correctly completed", MOD_NAME);
+}
+
+//For debugging purposes
+void stampa_lista(struct message *root)
+{
+    while (root != NULL) {
+    AUDIT printk("%d ", root->elem->index);
+    root = root->next;
+  }
 }

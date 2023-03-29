@@ -80,6 +80,7 @@ extern void free_tree(struct blk_element *);
 extern void insert(struct message **, struct message *);
 extern void free_list(struct message*);
 extern void delete(struct message**, struct message*);
+void stampa_lista(struct message *);
 
 
 #endif

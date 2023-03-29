@@ -96,6 +96,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         the_message = the_block->msg;
     else
         the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
+
     the_message->elem = the_block;
     asm volatile("mfence");
     the_block -> msg = the_message;
@@ -118,7 +119,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     // asm volatile("mfence");
     the_message->prev = curr;
     asm volatile("mfence");
-
+    stampa_lista (sh_data.first);
 cont:
 
     ret = get_offset(the_block->index);
@@ -312,7 +313,7 @@ asmlinkage long sys_invalidate_data(int offset)
 
     the_message = the_block->msg;
     delete (&sh_data.first, the_message);
-
+    stampa_lista (sh_data.first);
     //  move to a new epoch - still under write lock
     updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
 
@@ -375,7 +376,8 @@ long sys_invalidate_data = (unsigned long)__x64_sys_invalidate_data;
 #endif
 
 static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
-{
+{   
+    static unsigned int flag = 0;
     loff_t *my_off_ptr = get_off();
     int str_len = 0, index;
     struct blk_element *the_block;
@@ -413,18 +415,26 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         return 0; // Consistency check
 
     my_epoch = __sync_fetch_and_add(&(sh_data.epoch), 1);
-    AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
-
     the_block = tree_lookup(sh_data.head, get_index(block_to_read));
 
-    if (the_block == NULL || !get_validity(the_block->metadata) || get_free(the_block->metadata))
+    //In the first read i want to read the head of the list
+    //off = 0 means that it's the first read invokation or that the read is trying to read the message 0 belongs to the valid messages list
+    if (!flag && *my_off_ptr == 0 && the_block != NULL && sh_data.first != NULL && the_block -> msg != sh_data.first) {
+        the_block = sh_data.first -> elem;
+        if (sh_data.first -> elem != NULL) block_to_read = get_offset(sh_data.first -> elem -> index);
+        flag = 1; // In order to avoid an infinite loop...
+    }
+    AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
+    // Consistency check: The block has to be valid or not free because it belongs to the list of valid messages
+    if (the_block == NULL || !get_validity(the_block->metadata) || get_free(the_block->metadata)) 
     {
-        AUDIT printk("%s: The block at offset %d is invalid or free", MOD_NAME, block_to_read);
+        AUDIT printk("%s: The block at offset %d is NULL, valid or free", MOD_NAME, block_to_read);
         len = strlen("\n");
         ret = copy_to_user(buf, "\n", len);
         *my_off_ptr += BLK_SIZE;
         goto exit;
     }
+
     bh = (struct buffer_head *)sb_bread(sb, block_to_read);
     if (!bh)
     {
@@ -452,7 +462,8 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         ret = copy_to_user(buf, blk->data + offset, len);
         if (ret == 0 && the_block->msg->next == NULL)
         {
-            *my_off_ptr = file_size;
+            *my_off_ptr = file_size; //In this way the next read will end with code 0
+            flag = 0;
             goto exit_2;
         }
         else if (ret == 0)

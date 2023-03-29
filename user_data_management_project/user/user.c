@@ -109,7 +109,7 @@ int main(int argc, char **argv)
     case PUT_DATA:
         ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
         if (ret >= 0)
-            AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
+            AUDIT printf("%s written into block at index %d\n", write_buff, ret - 2);
         break;
     case GET_DATA:
         offset = strtol(argv[2], NULL, 10);
