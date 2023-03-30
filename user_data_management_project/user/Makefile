@@ -11,7 +11,7 @@ put_data:
 	./user $(put_data_sys_num)
 
 get_data:
-	./user $(get_data_sys_num) 5
+	./user $(get_data_sys_num) 8
 
 invalidate_data:
 	./user $(invalidate_data_sys_num) 0
@@ -20,7 +20,7 @@ puts:
 	./user $(put_data_sys_num)
 
 gets:
-	./user $(get_data_sys_num) 0 1 19
+	./user $(get_data_sys_num) 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
 
 invalidations:
 	./user $(invalidate_data_sys_num) 0 19
@@ -29,4 +29,4 @@ multi-ops:
 	./user $(multi_ops) 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
 
 same-block-ops:
-	./user $(same_block_ops) 5	
+	./user $(same_block_ops) 9	

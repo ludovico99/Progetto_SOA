@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -23,8 +24,9 @@ char **data;
 int num_params = 0;
 
 void *my_thread(void *index)
-{
-    int my_id = *(int*)index;
+{   
+    
+    int my_id = *(int *)index;
     int my_part = 0;
     char **temp = &data[2];
     int count = 0;
@@ -36,44 +38,27 @@ void *my_thread(void *index)
     int arg;
 
     arg = strtol(data[1], NULL, 10);
-    
-    if (arg == MULTI_OPS){
+
+    if (arg == MULTI_OPS)
+    {   
         int op = my_id % 3;
-        if (op == 0) arg = GET_DATA;
-        else if (op == 1) arg = INVALIDATE_DATA;
-        else arg = PUT_DATA;
+        if (op == 0)
+            arg = GET_DATA;
+        else if (op == 1)
+            arg = INVALIDATE_DATA;
+        else
+            arg = PUT_DATA;
     }
 
-   AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
+    AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
 
-    if (arg == SAME_BLOCK_OPS){
-        offset = strtol(data[2], NULL, 10);
-        ret = syscall(GET_DATA, offset, buffer, SIZE);
-        if (ret >= 0)
-                printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
-        else
-            AUDIT printf("The system call %d ended with the following error message: %d\n",arg, ret);
-        ret = syscall(INVALIDATE_DATA, offset);
-       if (ret >= 0)
-                AUDIT printf("The block at index %d invalidation ended with code %d\n", offset, ret);
-        else
-            AUDIT printf("The system call %d ended with the following error message: %d\n",arg, ret);
-        ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
-         if (ret >= 0)
-                AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
-        else
-            AUDIT printf("The system call %d ended with the following error message: %d\n",arg, ret);
-       
-        pthread_exit(0);
-
-    }
-  
-    if (arg == PUT_DATA){
+    if (arg == PUT_DATA)
+    {
         ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
         if (ret >= 0)
-                AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
+            AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
         else
-            AUDIT printf("The system call %d ended with the following error message: %d\n",arg, ret);
+            AUDIT printf("The system call %d ended with the following error message: %d\n", arg, ret);
         pthread_exit(0);
     }
 
@@ -81,12 +66,12 @@ void *my_thread(void *index)
     while (my_part < num_params)
     {
         offset = atoi(temp[my_part]);
-        
+
         switch (arg)
         {
-      
+
         case GET_DATA:
-            memset(buffer,0,SIZE);
+            memset(buffer, 0, SIZE);
             ret = syscall(GET_DATA, offset, buffer, SIZE);
             if (ret >= 0)
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
@@ -101,13 +86,72 @@ void *my_thread(void *index)
             break;
         }
         if (ret < 0)
-           AUDIT printf("The system call %d ended with the following error message: %s\n",arg, strerror(-ret));
+            AUDIT printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
 
         i += 1;
         my_part = my_id + NUM_THREADS * i;
     }
     pthread_exit(0);
 }
+
+void *same_blk(void *index)
+{
+    int my_id = *(int *)index;
+    char buffer[SIZE];
+    char write_buff[SIZE] = "Wathever content you would like.\n";
+    int offset = 0;
+    int ret = -1;
+    int i = 0;
+    int arg;
+
+    offset = strtol(data[2], NULL, 10);
+    
+    srand(my_id);
+
+    // Genera un numero casuale da 0 a RAND_MAX
+    int op = rand();
+
+    // Calcola il numero casuale da 1 a 3
+    op = op % 3;
+
+
+    if (op == 0)
+        arg = GET_DATA;
+    else if (op == 1)
+        arg = INVALIDATE_DATA;
+    else
+        arg = PUT_DATA;
+
+    for (i = 0; i < REQS; i++)
+    {
+        switch (arg)
+        {
+        case PUT_DATA:
+            ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
+            if (ret >= 0)
+                AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
+            break;
+        case GET_DATA:
+            memset(buffer, 0, SIZE);
+            ret = syscall(GET_DATA, offset, buffer, SIZE);
+            if (ret >= 0)
+                printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
+            break;
+        case INVALIDATE_DATA:
+            ret = syscall(INVALIDATE_DATA, offset);
+            if (ret >= 0)
+                AUDIT printf("The block at index %d invalidation ended with code %d\n", offset, ret);
+            break;
+        default:
+            AUDIT printf("Syscall number inserted is invalid");
+            break;
+        }
+        if (ret < 0)
+            AUDIT printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
+    }
+    pthread_exit(0);
+}
+
 
 int main(int argc, char **argv)
 {
@@ -156,6 +200,7 @@ int main(int argc, char **argv)
 #else
     int i = 0;
     pthread_t tids[NUM_THREADS];
+    arg = strtol(argv[1], NULL, 10);
     int array[NUM_THREADS];
     if (argc < 2)
     {
@@ -167,9 +212,13 @@ int main(int argc, char **argv)
     num_params = argc - 2; // Total offsets passed as arguments
     AUDIT printf("num params: %d \n", num_params);
     AUDIT printf("Spawning %d threads ...\n", NUM_THREADS);
-    for (i = 0; i < NUM_THREADS; i++){
+    for (i = 0; i < NUM_THREADS; i++)
+    {
         array[i] = i;
-        pthread_create(&tids[i], NULL, my_thread, (void*)&array[i]);
+        if (arg != SAME_BLOCK_OPS)
+            pthread_create(&tids[i], NULL, my_thread, (void *)&array[i]);
+        else
+            pthread_create(&tids[i], NULL, same_blk, (void *)&array[i]);
     }
 
     for (i = 0; i < NUM_THREADS; i++)
