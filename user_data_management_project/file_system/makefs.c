@@ -35,6 +35,7 @@ int main(int argc, char *argv[])
 {
 	int fd, nbytes;
 	ssize_t ret;
+	int index;
 	struct userdatafs_sb_info sb;
 	struct userdatafs_inode root_inode;
 	struct userdatafs_inode file_inode;
@@ -106,8 +107,8 @@ int main(int argc, char *argv[])
 
 	// write file datablocks
 	for (int i = 0; i < NBLOCKS; i++)
-	{
-		if (MD_SIZE + strlen(testo[i]) > BLK_SIZE)
+	{	index = i % 20; //20 is the total number of texts hardcoded
+		if (MD_SIZE + strlen(testo[index]) > BLK_SIZE)
 		{
 			printf("The block is too small");
 			return -1;
@@ -115,7 +116,7 @@ int main(int argc, char *argv[])
 
 		metadata = set_valid(metadata);
 		metadata = set_not_free(metadata);
-		metadata = set_length(metadata, strlen(testo[i]));
+		metadata = set_length(metadata, strlen(testo[index]));
 		
 		ret = write(fd, &metadata, MD_SIZE);
 		printf("Metadata: %x\n", metadata);
@@ -126,8 +127,8 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
-		nbytes = strlen(testo[i]);
-		ret = write(fd, testo[i], nbytes);
+		nbytes = strlen(testo[index]);
+		ret = write(fd, testo[index], nbytes);
 		if (ret != nbytes)
 		{
 			printf("Writing file datablock has failed.\n");

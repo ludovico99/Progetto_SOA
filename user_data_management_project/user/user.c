@@ -30,6 +30,7 @@ void *my_thread(void *index)
     int my_part = 0;
     char **temp = &data[2];
     int count = 0;
+    int upper_bound = 0;
     char buffer[SIZE];
     char write_buff[SIZE] = "Wathever content you would like.\n";
     int offset = 0;
@@ -63,10 +64,12 @@ void *my_thread(void *index)
     }
 
     my_part = my_id;
-    while (my_part < num_params)
+    if (arg == INVALIDATE_DATA) upper_bound = num_params;
+    else upper_bound = NBLOCKS;
+    while (my_part < upper_bound)
     {
-        offset = atoi(temp[my_part]);
-
+        if (arg == INVALIDATE_DATA) offset = atoi(temp[my_part]);
+        else offset = my_part;
         switch (arg)
         {
 

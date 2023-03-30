@@ -71,11 +71,12 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     // check on the number of manageable blocks
     inode_disk = (struct userdatafs_inode *)bh->b_data;
     if (NBLOCKS < (inode_disk->file_size / BLK_SIZE))
-    {
+    {   
+
+        brelse(bh);
         return -EINVAL;
     }
 
-    brelse(bh);
     // check on the expected magic number
     if (magic != sb->s_magic)
     {
@@ -190,6 +191,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
             if (!bh)
             {
                 printk("%s: Error retrieving the block at offset %d\n", MOD_NAME, offset);
+                mount_md.mounted = 0;
                 return ERR_PTR(-EIO);
             }
             if (bh->b_data != NULL)
@@ -199,6 +201,8 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                 if (!blk_elem)
                 {
                     printk("%s: Error allocationg blk_element struct\n", MOD_NAME);
+                    brelse(bh);
+                    mount_md.mounted = 0;
                     return ERR_PTR(-ENOMEM);
                 }
                 blk_elem->metadata = ((struct dev_blk *)bh->b_data)->metadata;
@@ -212,6 +216,8 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     if (!message)
                     {
                         printk("%s: Error allocationg message struct\n", MOD_NAME);
+                        brelse(bh);
+                        mount_md.mounted = 0;
                         return ERR_PTR(-ENOMEM);
                     }
                     message->elem = blk_elem;
