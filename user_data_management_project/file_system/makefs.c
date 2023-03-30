@@ -115,8 +115,8 @@ int main(int argc, char *argv[])
 
 		metadata = set_valid(metadata);
 		metadata = set_not_free(metadata);
-
 		metadata = set_length(metadata, strlen(testo[i]));
+		
 		ret = write(fd, &metadata, MD_SIZE);
 		printf("Metadata: %x\n", metadata);
 		if (ret != MD_SIZE)

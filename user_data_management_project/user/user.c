@@ -12,9 +12,11 @@
 #include "user.h"
 
 #define MULTI_OPS -1
+#define SAME_BLOCK_OPS -2
 #define PUT_DATA 156
 #define GET_DATA 174
 #define INVALIDATE_DATA 177
+#define TIMES 10
 #define SIZE 4096
 
 char **data;
@@ -40,17 +42,38 @@ void *my_thread(void *index)
         if (op == 0) arg = GET_DATA;
         else if (op == 1) arg = INVALIDATE_DATA;
         else arg = PUT_DATA;
-        AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
     }
-    else AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
 
+   AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
+
+    if (arg == SAME_BLOCK_OPS){
+        offset = strtol(data[2], NULL, 10);
+        ret = syscall(GET_DATA, offset, buffer, SIZE);
+        if (ret >= 0)
+                printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
+        else
+            AUDIT printf("The system call %d ended with the following error message: %d\n",arg, ret);
+        ret = syscall(INVALIDATE_DATA, offset);
+       if (ret >= 0)
+                AUDIT printf("The block at index %d invalidation ended with code %d\n", offset, ret);
+        else
+            AUDIT printf("The system call %d ended with the following error message: %d\n",arg, ret);
+        ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
+         if (ret >= 0)
+                AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
+        else
+            AUDIT printf("The system call %d ended with the following error message: %d\n",arg, ret);
+       
+        pthread_exit(0);
+
+    }
   
     if (arg == PUT_DATA){
         ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
         if (ret >= 0)
                 AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
         else
-            AUDIT printf("The system call %d ended with the following error message: %s\n",arg, strerror(-ret));
+            AUDIT printf("The system call %d ended with the following error message: %d\n",arg, ret);
         pthread_exit(0);
     }
 

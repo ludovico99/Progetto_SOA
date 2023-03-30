@@ -28,7 +28,7 @@ struct blk_element
     struct message * msg;
     uint16_t metadata;
     unsigned int index;
-    uint8_t dirtiness; // if 1 the changes should be flushed into the device
+    //uint8_t dirtiness; // if 1 the changes should be flushed into the device
 };
 
 struct message
@@ -37,6 +37,12 @@ struct message
     struct message *next;
     struct message *prev;
 
+};
+
+struct current_message {
+    int index;
+    struct blk_element * elem;
+    loff_t offset;
 };
 
 struct dev_blk
