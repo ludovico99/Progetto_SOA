@@ -154,13 +154,14 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
 {
     int offset;
     int index;
+    int id = 0;
     struct buffer_head *bh;
     struct blk_element *blk_elem;
     struct message *message;
     struct dentry *ret;
     int i = 0;
     int mnt;
-    int array[NBLOCKS];
+    int *array = NULL;
 
     mnt = __sync_val_compare_and_swap(&mount_md.mounted, 0, 1);
     if (mnt == 1)
@@ -182,18 +183,24 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         bdev_md.path = dev_name;
         // Initialization ...
         init(&sh_data);
-
-        get_balanced_indices(array, 0, NBLOCKS -1);
-
+        array = (int *)kzalloc(sizeof(int)*NBLOCKS, GFP_KERNEL);
+        if (!array)
+        {
+            printk("%s: Error allocationg int array\n", MOD_NAME);
+            mount_md.mounted = 0;
+            return ERR_PTR(-ENOMEM);
+        }
+        get_balanced_indices(array, 0, NBLOCKS - 1, &id);
         // Creating the tree and the "overlayed" list that contains all valid messages
         for (i = 0; i < NBLOCKS; i++)
-        {   
+        {
             index = array[i];
             offset = get_offset(index);
             bh = (struct buffer_head *)sb_bread((bdev_md.bdev)->bd_super, offset);
             if (!bh)
             {
                 printk("%s: Error retrieving the block at offset %d\n", MOD_NAME, offset);
+                kfree(array);
                 mount_md.mounted = 0;
                 return ERR_PTR(-EIO);
             }
@@ -204,6 +211,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                 if (!blk_elem)
                 {
                     printk("%s: Error allocationg blk_element struct\n", MOD_NAME);
+                    kfree(array);
                     brelse(bh);
                     mount_md.mounted = 0;
                     return ERR_PTR(-ENOMEM);
@@ -211,7 +219,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                 blk_elem->metadata = ((struct dev_blk *)bh->b_data)->metadata;
                 blk_elem->index = index;
 
-                AUDIT printk("%s: Block at offset %d (index %d) contains the message = %s\n", MOD_NAME, offset, index, ((struct dev_blk *)bh->b_data)->data);
+                // AUDIT printk("%s: Block at offset %d (index %d) contains the message = %s\n", MOD_NAME, offset, index, ((struct dev_blk *)bh->b_data)->data);
                 tree_insert(&sh_data.head, blk_elem);
 
                 if (get_validity(((struct dev_blk *)bh->b_data)->metadata))
@@ -221,6 +229,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     {
                         printk("%s: Error allocationg message struct\n", MOD_NAME);
                         kfree(blk_elem);
+                        kfree(array);
                         brelse(bh);
                         mount_md.mounted = 0;
                         return ERR_PTR(-ENOMEM);
@@ -232,15 +241,14 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
             }
             brelse(bh);
         }
+        kfree(array);
     }
-        stampa_albero(sh_data.head);
-        return ret;
+    return ret;
 }
 
-    // file system structure
-    static struct file_system_type userdatafs_type = {
-        .owner = THIS_MODULE,
-        .name = "userdatafs",
-        .mount = userdatafs_mount,
-        .kill_sb = userdatafs_kill_superblock,
-    };
+// file system structure
+static struct file_system_type userdatafs_type = {
+    .owner = THIS_MODULE,
+    .name = "userdatafs",
+    .mount = userdatafs_mount,
+    .kill_sb = userdatafs_kill_superblock};

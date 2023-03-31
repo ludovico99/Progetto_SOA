@@ -9,6 +9,7 @@
         "type_traits": "c",
         "concepts": "c",
         "new": "c",
-        "sched.h": "c"
+        "sched.h": "c",
+        "utils.h": "c"
     }
 }

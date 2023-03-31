@@ -481,10 +481,10 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     if (blk != NULL)
     {
         str_len = get_length(blk->metadata);
-        AUDIT printk("%s: Block at index %d has message with length %d", MOD_NAME, block_to_read, str_len);
+        AUDIT printk("%s: Block at index %d has message with length %d", MOD_NAME, get_index(block_to_read), str_len);
         offset = my_off % BLK_SIZE; // Residual
 
-        AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, block_to_read, offset, str_len - offset);
+        AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, get_index(block_to_read), offset, str_len - offset);
 
         if (offset == 0)
             len = str_len;
