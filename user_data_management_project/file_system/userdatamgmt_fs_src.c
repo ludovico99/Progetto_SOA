@@ -183,7 +183,8 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         bdev_md.path = dev_name;
         // Initialization ...
         init(&sh_data);
-        array = (int *)kzalloc(sizeof(int)*NBLOCKS, GFP_KERNEL);
+
+        array = kzalloc(sizeof(unsigned int) * NBLOCKS, GFP_KERNEL);
         if (!array)
         {
             printk("%s: Error allocationg int array\n", MOD_NAME);
@@ -219,7 +220,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                 blk_elem->metadata = ((struct dev_blk *)bh->b_data)->metadata;
                 blk_elem->index = index;
 
-                // AUDIT printk("%s: Block at offset %d (index %d) contains the message = %s\n", MOD_NAME, offset, index, ((struct dev_blk *)bh->b_data)->data);
+                AUDIT printk("%s: Block at offset %d (index %d) contains the message = %s\n", MOD_NAME, offset, index, ((struct dev_blk *)bh->b_data)->data);
                 tree_insert(&sh_data.head, blk_elem);
 
                 if (get_validity(((struct dev_blk *)bh->b_data)->metadata))

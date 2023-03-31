@@ -10,7 +10,7 @@ extern struct blk_element* tree_delete (struct blk_element*, int);
 extern struct blk_element* inorderTraversal(struct blk_element*);
 extern void stampa_albero(struct blk_element *root);
 extern void free_tree(struct blk_element *);
-extern void get_balanced_indices(int *, int , int, int*);
+extern void get_balanced_indices(int *,  int , int, int*);
 
 extern void insert(struct message **, struct message **,struct message *);
 extern void free_list(struct message*);

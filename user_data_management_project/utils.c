@@ -71,49 +71,49 @@ void init(struct rcu_data *t)
     }
 }
 
-// ITERATIVE : tree_lookup
-//  struct blk_element *tree_lookup(struct blk_element *root, int index)
-//  {
-//      struct blk_element * curr = root;
-//      while (curr != NULL) {
-//          if (index == curr->index) {
-//              AUDIT printk("%s: lookup operation completed for block with index %d", MOD_NAME, index);
-//              return root;
-//          } else if (index < curr->index) {
-//              // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
-//              curr = curr->left;
-//          } else {
-//              // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
-//              curr = curr->right;
-//          }
-//      }
-//      return NULL;
-//  }
+//ITERATIVE : tree_lookup
+ struct blk_element *tree_lookup(struct blk_element *root, int index)
+ {
+     struct blk_element * curr = root;
+     while (curr != NULL) {
+         if (index == curr->index) {
+             AUDIT printk("%s: lookup operation completed for block with index %d", MOD_NAME, index);
+             return curr;
+         } else if (index < curr->index) {
+             // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
+             curr = curr->left;
+         } else {
+             // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
+             curr = curr->right;
+         }
+     }
+     return NULL;
+ }
 
-struct blk_element *tree_lookup(struct blk_element *root, int index)
-{
+// struct blk_element *tree_lookup(struct blk_element *root, int index)
+// {
 
-    if (root == NULL)
-    {
-        return NULL;
-    }
+//     if (root == NULL)
+//     {
+//         return NULL;
+//     }
 
-    if (index > root->index)
-    {
-        // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
-        return tree_lookup(root->right, index);
-    }
-    else if (index < root->index)
-    {
-        // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
-        return tree_lookup(root->left, index);
-    }
-    else
-    {
-        AUDIT printk("%s: lookup operation completed for block with index %d", MOD_NAME, index);
-        return root;
-    }
-}
+//     if (index > root->index)
+//     {
+//         // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
+//         return tree_lookup(root->right, index);
+//     }
+//     else if (index < root->index)
+//     {
+//         // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
+//         return tree_lookup(root->left, index);
+//     }
+//     else
+//     {
+//         AUDIT printk("%s: lookup operation completed for block with index %d", MOD_NAME, index);
+//         return root;
+//     }
+// }
 
 // ITERATIVE: tree_insert
 void tree_insert(struct blk_element **root, struct blk_element *newNode)
