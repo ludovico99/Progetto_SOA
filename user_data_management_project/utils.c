@@ -71,6 +71,58 @@ void init(struct rcu_data *t)
     }
 }
 
+//ITERATIVE : tree_lookup
+// struct blk_element *tree_lookup(struct blk_element *root, int index)
+// {
+//     struct blk_element * curr = root;
+//     while (curr != NULL) {
+//         if (index == curr->index) {
+//             AUDIT printk("%s: lookup operation completed for block with index %d", MOD_NAME, index);
+//             return root;
+//         } else if (index < curr->index) {
+//             // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
+//             curr = curr->left;
+//         } else {
+//             // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
+//             curr = curr->right;
+//         }
+//     }
+//     return NULL;
+// }
+
+//ITERATIVE: tree_insert
+// void tree_insert(struct blk_element **root, struct blk_element *newNode)
+// {
+//     int index = newNode->index;
+//     struct blk_element* curr = *root;
+//     struct blk_element* parent = NULL;
+//     // AUDIT printk("%s: insert operation started for block at index %d", MOD_NAME, index);
+//     if (*root == NULL)
+//     {
+//         *root = newNode;
+//         AUDIT printk("%s: insert operation completed for block with index %d", MOD_NAME, index);
+//         return;
+//     }
+
+//     while (curr != NULL) {
+//         parent = curr;
+
+//         if (index < curr->index) {
+//             // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
+//             curr = curr->left;
+//         } else {
+//             // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
+//             curr = curr->right;
+//         }
+//     }
+
+//     if (index < parent->index) {
+//         parent->left = newNode;
+//     } else {
+//         parent->right = newNode;
+//     }
+// }
+
 struct blk_element *tree_lookup(struct blk_element *root, int index)
 {
 
@@ -119,6 +171,7 @@ void tree_insert(struct blk_element **root, struct blk_element *newNode)
     }
 }
 
+
 // Trova il nodo con valore minimo nell'albero
 static struct blk_element *find_min(struct blk_element *node)
 {
@@ -132,7 +185,83 @@ static struct blk_element *find_min(struct blk_element *node)
     return curr;
 }
 
-// Funzione per eliminare un nodo con un dato index dall'albero binario
+// Iterative: Funzione per eliminare un nodo con un dato index dall'albero binario
+// bool tree_delete_it(struct blk_element **root, int index)
+// {   
+//     struct blk_element *curr = *root;
+//     struct blk_element *parent = NULL;
+//     struct blk_element *min_node = NULL;
+//     bool isLeftChild = false;
+
+//     if (curr == NULL)
+//     {
+//         return false;
+//     }
+
+//     while (curr->index != index) {
+//         parent = curr;
+
+//         if (index < curr->index) {
+//             curr = curr->left;
+//             isLeftChild = true;
+//         } else {
+//             curr = curr->right;
+//             isLeftChild = false;
+//         }
+
+//         if (curr == NULL) {
+//             return false;
+//         }
+//     }
+
+//      // caso 1: il nodo da eliminare non ha figli
+//     if (curr->left == NULL && curr->right == NULL) {
+//         if (curr == *root) {
+//             *root = NULL;
+//             asm volatile("mfence");
+//         } else if (isLeftChild) {
+//             parent->left = NULL;
+//             asm volatile("mfence");
+//         } else {
+//             parent->right = NULL;
+//             asm volatile("mfence");
+//         }
+//     }
+//     // caso 2: il nodo da eliminare ha solo un figlio
+//     else if (curr->left == NULL) {
+//         if (curr == *root) {
+//             *root = curr->right;
+//             asm volatile("mfence");
+//         } else if (isLeftChild) {
+//             parent->left = curr->right;
+//             asm volatile("mfence");
+//         } else {
+//             parent->right = curr->right;
+//             asm volatile("mfence");
+//         }
+//     } else if (curr->right == NULL) {
+//         if (curr == *root) {
+//             *root = curr->left;
+//             asm volatile("mfence");
+//         } else if (isLeftChild) {
+//             parent->left = curr->left;
+//             asm volatile("mfence"); 
+//         } else {
+//             parent->right = curr->left;
+//             asm volatile("mfence"); 
+//         }
+//     }
+//     // caso 3: il nodo da eliminare ha due figli
+//     else {
+//         min_node = find_min(curr->right);
+//         tree_delete(root, min_node->index);
+//         curr->index = min_node->index;
+//         asm volatile("mfence"); 
+//     }
+     
+//     return true;
+// }
+
 struct blk_element *tree_delete(struct blk_element *root, int index)
 {
     struct blk_element *temp = NULL;
@@ -174,6 +303,7 @@ struct blk_element *tree_delete(struct blk_element *root, int index)
     }
     return root;
 }
+
 
 //For debugging purposes
 void stampa_albero(struct blk_element *root)
@@ -287,4 +417,22 @@ void stampa_lista(struct message *root)
     AUDIT printk("%d ", root->elem->index);
     root = root->next;
   }
+}
+
+void get_balanced_indices(int *array,int start, int end) {
+    int mid = (start + end) / 2;
+    int i = 1;
+    int left = mid - 1;
+    int right = mid + 1;
+
+    array[0] = mid;
+    while (left >= start || right <= end) {
+        if (left >= start) {
+            array[i++] = left--;
+        }
+        if (right <= end) {
+            array[i++] = right++;
+        }
+    }
+    return;
 }

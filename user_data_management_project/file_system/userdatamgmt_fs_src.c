@@ -32,6 +32,7 @@
 
 #include "userdatamgmt_fs.h"
 #include "../userdatamgmt_driver.h"
+#include "../utils.h"
 
 struct bdev_metadata bdev_md = {0, NULL, NULL};
 struct mount_metadata mount_md = {0, "/"};
@@ -71,7 +72,7 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     // check on the number of manageable blocks
     inode_disk = (struct userdatafs_inode *)bh->b_data;
     if (NBLOCKS < (inode_disk->file_size / BLK_SIZE))
-    {   
+    {
 
         brelse(bh);
         return -EINVAL;
@@ -143,7 +144,7 @@ static void userdatafs_kill_superblock(struct super_block *s)
 
     AUDIT printk("%s: Freeing the struct allocated in the kernel memory", MOD_NAME);
     free_tree(sh_data.head);
-    free_list (sh_data.first);
+    free_list(sh_data.first);
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
 }
@@ -151,14 +152,15 @@ static void userdatafs_kill_superblock(struct super_block *s)
 // called on file system mounting
 struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data)
 {
-
-    struct dentry *ret;
-    int mnt;
-    int i = 0;
     int offset;
+    int index;
     struct buffer_head *bh;
     struct blk_element *blk_elem;
     struct message *message;
+    struct dentry *ret;
+    int i = 0;
+    int mnt;
+    int array[NBLOCKS];
 
     mnt = __sync_val_compare_and_swap(&mount_md.mounted, 0, 1);
     if (mnt == 1)
@@ -176,17 +178,18 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         mount_md.mount_point = mount_pt;
         AUDIT printk("%s: userdatafs is succesfully mounted on from device %s and mount directory %s\n", MOD_NAME, dev_name, mount_md.mount_point);
 
-        // initiliazation of the RCU tree
-        // Start filling the block device representation in RAM
-
         bdev_md.bdev = blkdev_get_by_path(dev_name, FMODE_READ | FMODE_WRITE, NULL);
         bdev_md.path = dev_name;
+        // Initialization ...
         init(&sh_data);
-        // Initialization of struct blk_metadata
-        for (i = 0; i < NBLOCKS; i++)
-        {
 
-            offset = get_offset(i);
+        get_balanced_indices(array, 0, NBLOCKS -1);
+
+        // Creating the tree and the "overlayed" list that contains all valid messages
+        for (i = 0; i < NBLOCKS; i++)
+        {   
+            index = array[i];
+            offset = get_offset(index);
             bh = (struct buffer_head *)sb_bread((bdev_md.bdev)->bd_super, offset);
             if (!bh)
             {
@@ -206,8 +209,9 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     return ERR_PTR(-ENOMEM);
                 }
                 blk_elem->metadata = ((struct dev_blk *)bh->b_data)->metadata;
-                blk_elem->index = i;
-                 // AUDIT printk("%s: Block at offset %d (index %d) is %d (1 stays for valid) contains the message = %s\n", MOD_NAME, offset, i, get_validity(blk_elem->blk->metadata), blk_elem->blk->data);
+                blk_elem->index = index;
+
+                AUDIT printk("%s: Block at offset %d (index %d) contains the message = %s\n", MOD_NAME, offset, index, ((struct dev_blk *)bh->b_data)->data);
                 tree_insert(&sh_data.head, blk_elem);
 
                 if (get_validity(((struct dev_blk *)bh->b_data)->metadata))
@@ -216,25 +220,27 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     if (!message)
                     {
                         printk("%s: Error allocationg message struct\n", MOD_NAME);
+                        kfree(blk_elem);
                         brelse(bh);
                         mount_md.mounted = 0;
                         return ERR_PTR(-ENOMEM);
                     }
                     message->elem = blk_elem;
-                    blk_elem -> msg = message;
-                    insert(&sh_data.first,&sh_data.last, message);
-                }     
+                    blk_elem->msg = message;
+                    insert(&sh_data.first, &sh_data.last, message);
+                }
             }
             brelse(bh);
         }
     }
-    return ret;
+        stampa_albero(sh_data.head);
+        return ret;
 }
 
-// file system structure
-static struct file_system_type userdatafs_type = {
-    .owner = THIS_MODULE,
-    .name = "userdatafs",
-    .mount = userdatafs_mount,
-    .kill_sb = userdatafs_kill_superblock,
-};
+    // file system structure
+    static struct file_system_type userdatafs_type = {
+        .owner = THIS_MODULE,
+        .name = "userdatafs",
+        .mount = userdatafs_mount,
+        .kill_sb = userdatafs_kill_superblock,
+    };

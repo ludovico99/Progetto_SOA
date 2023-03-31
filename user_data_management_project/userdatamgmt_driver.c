@@ -329,6 +329,9 @@ asmlinkage long sys_invalidate_data(int offset)
 
     the_message = the_block->msg;
     delete (&sh_data.first, &sh_data.last, the_message);
+
+  
+
     // stampa_lista (sh_data.first);
 
     the_block->metadata = set_invalid(the_block->metadata);

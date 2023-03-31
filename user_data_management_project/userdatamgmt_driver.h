@@ -75,19 +75,4 @@ struct rcu_data
     spinlock_t write_lock;                                       // write lock to be acquired in order to modify the shared data structure
 } __attribute__((aligned(64)));
 
-extern void init(struct rcu_data *);
-
-extern struct blk_element *tree_lookup(struct blk_element *, int);
-extern void tree_insert(struct blk_element **, struct blk_element *);
-extern struct blk_element* tree_delete(struct blk_element*, int);
-extern struct blk_element* inorderTraversal(struct blk_element*);
-extern void stampa_albero(struct blk_element *root);
-extern void free_tree(struct blk_element *);
-
-extern void insert(struct message **, struct message **,struct message *);
-extern void free_list(struct message*);
-extern void delete(struct message**,struct message **, struct message*);
-void stampa_lista(struct message *);
-
-
 #endif
