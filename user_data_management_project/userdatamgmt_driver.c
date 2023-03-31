@@ -470,7 +470,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     bh = (struct buffer_head *)sb_bread(sb, block_to_read);
     if (!bh)
     {
-        AUDIT printk("%s: Error in retrieving the block %d", MOD_NAME, block_to_read);
+        printk("%s: Error in retrieving the block %d", MOD_NAME, block_to_read);
         index = (my_epoch & MASK) ? 1 : 0;
         __sync_fetch_and_add(&(sh_data.standing[index]), 1);
         return -EIO;

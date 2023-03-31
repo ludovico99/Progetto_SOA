@@ -5,7 +5,7 @@
 #include <linux/fs.h>
 
 #define MOD_NAME "BLOCK-LEVEL DATA MANAGEMENT SERVICE"
-#define  AUDIT if(1) //this is a general audit flag
+#define  AUDIT if(0) //this is a general audit flag
 #define BLK_SIZE 4096
 
 #define MAGIC 0x42424242
@@ -21,7 +21,7 @@
 #define MD_SIZE sizeof(uint16_t)
 #define SIZE (BLK_SIZE - MD_SIZE)
 //#define SYNC_FLUSH 
-#define NBLOCKS 20
+#define NBLOCKS 10000
 #define PERIOD 10000
 
 #define get_index(offset)   ((offset) - 2)

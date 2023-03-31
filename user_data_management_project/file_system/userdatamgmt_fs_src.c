@@ -184,11 +184,12 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         // Initialization ...
         init(&sh_data);
 
-        array = kzalloc(sizeof(unsigned int) * NBLOCKS, GFP_KERNEL);
+        if (sizeof(unsigned int) * NBLOCKS < 128 * 1024) array = kzalloc(sizeof(unsigned int) * NBLOCKS, GFP_KERNEL);
+        else array = vmalloc((sizeof(unsigned int) * NBLOCKS));
+
         if (!array)
         {
             printk("%s: Error allocationg int array\n", MOD_NAME);
-            mount_md.mounted = 0;
             return ERR_PTR(-ENOMEM);
         }
         get_balanced_indices(array, 0, NBLOCKS - 1, &id);
@@ -201,9 +202,8 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
             if (!bh)
             {
                 printk("%s: Error retrieving the block at offset %d\n", MOD_NAME, offset);
-                kfree(array);
-                mount_md.mounted = 0;
-                return ERR_PTR(-EIO);
+                ret = ERR_PTR(-EIO);
+                goto exit;
             }
             if (bh->b_data != NULL)
             {
@@ -212,10 +212,9 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                 if (!blk_elem)
                 {
                     printk("%s: Error allocationg blk_element struct\n", MOD_NAME);
-                    kfree(array);
                     brelse(bh);
-                    mount_md.mounted = 0;
-                    return ERR_PTR(-ENOMEM);
+                    ret = ERR_PTR(-ENOMEM);
+                    goto exit;
                 }
                 blk_elem->metadata = ((struct dev_blk *)bh->b_data)->metadata;
                 blk_elem->index = index;
@@ -230,19 +229,21 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     {
                         printk("%s: Error allocationg message struct\n", MOD_NAME);
                         kfree(blk_elem);
-                        kfree(array);
                         brelse(bh);
-                        mount_md.mounted = 0;
-                        return ERR_PTR(-ENOMEM);
+                        ret = ERR_PTR(-ENOMEM);
+                        goto exit;
                     }
                     message->elem = blk_elem;
                     blk_elem->msg = message;
-                    insert(&sh_data.first, &sh_data.last, message);
+                    insert_sorted(&sh_data.first, &sh_data.last, message);
                 }
             }
             brelse(bh);
         }
-        kfree(array);
+exit:
+        if (sizeof(unsigned int) * NBLOCKS < 128 * 1024) kfree(array);
+        else vfree(array);
+        if (unlikely(IS_ERR(ret))) mount_md.mounted = 0;
     }
     return ret;
 }

@@ -368,6 +368,45 @@ void insert(struct message **head, struct message **tail, struct message *to_ins
     *tail = to_insert;
 }
 
+void insert_sorted(struct message ** head, struct message **tail, struct message *to_insert) {
+
+    struct message* curr;
+    int index = to_insert -> elem ->index;
+    to_insert->prev = *tail;
+    to_insert->next = NULL;
+
+    if (*head == NULL) { // se la lista è vuota
+        *head = to_insert;
+        *tail = to_insert;
+    }
+    else {
+        curr = *head;
+        while (curr != NULL && curr->elem->index < index) {
+            curr = curr->next;
+        }
+
+        if (curr == NULL) { // inserimento in coda
+            (*tail)->next = to_insert;
+             *tail = to_insert;
+        }
+        else { // inserimento in mezzo alla lista
+            to_insert->next = curr;
+            to_insert->prev = curr->prev;
+
+            if (curr->prev != NULL) {
+                curr->prev->next = to_insert;
+            }
+            curr->prev = to_insert;
+
+            if (curr == *head) {
+                *head = to_insert;
+            }
+        }
+    }
+}
+
+
+
 void free_list(struct message *head)
 {
     struct message *curr = head;
