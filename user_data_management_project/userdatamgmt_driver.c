@@ -29,13 +29,6 @@
 #include "file_system/userdatamgmt_fs.h"
 #include "userdatamgmt_driver.h"
 
-DEFINE_PER_CPU(loff_t, my_off);
-
-static __always_inline loff_t *get_off(void)
-{
-    return this_cpu_ptr(&my_off); // legge la variabile per-CPU
-}
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(2, _put_data, char *, source, ssize_t, size)
 {
@@ -409,7 +402,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     struct dev_blk *blk = NULL;
     struct inode *the_inode = filp->f_inode;
     struct current_message *the_message = (struct current_message *)filp->private_data;
-    loff_t my_off = the_message ->offset; // In this way each CPU has its own private copy and *off can't be changed concurrently
+    loff_t my_off = the_message ->offset; // In this way each open has its own private copy and *off can't be changed concurrently
     uint64_t file_size = the_inode->i_size;
     unsigned long my_epoch;
     struct super_block *sb = filp->f_path.dentry->d_inode->i_sb;
