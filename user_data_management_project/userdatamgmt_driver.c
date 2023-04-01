@@ -31,10 +31,10 @@
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(2, _put_data, char *, source, ssize_t, size)
-{
+{ // System call definition for kernel versions greater or equal to 4.17.0
 #else
 asmlinkage int sys_put_data(char *source, ssize_t size)
-{
+{ // System call definition for previous kernel versions
 #endif
     struct blk_element *the_block = NULL;
     struct message **the_head = NULL;
@@ -47,131 +47,166 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     unsigned long residual_bytes = -1;
     int ret = 0;
 
+    // Atomically adds 1 to bdev_md.count variable and returns the new value.
     __sync_fetch_and_add(&(bdev_md.count), 1);
+     // Prints a kernel log message containing the string "SYS_PUT_DATA" and the value of the MOD_NAME constant.
     printk("%s: SYS_PUT_DATA \n", MOD_NAME);
 
     if (!mount_md.mounted)
     {
         printk("%s: The device is not mounted", MOD_NAME);
+         // Set the ret variable to -19 (error code for no such device).
         ret = -ENODEV;
+        // Jumps to the exit label
         goto exit;
     }
-
+     // If the size variable is greater than the SIZE constant, set its value to SIZE.
     if (size > SIZE)
         size = SIZE;
     if (size < 0){
+         // Set the ret variable to -22 (error code for invalid argument).
         ret = -EINVAL;
         goto exit;
     }
 
-
+    // Acquires the write lock of the sh_data structure.
     spin_lock(&(sh_data.write_lock));
-
+     // Traverses the binary tree starting from sh_data.head and returns the first empty block encountered.
     the_block = inorderTraversal(sh_data.head);
 
     if (the_block == NULL)
-    {
+    {   
+        // Prints a kernel log message containing the string "No blocks available in the device" and the value of the MOD_NAME constant.
         printk("%s: No blocks available in the device\n", MOD_NAME);
+        // Releases the write lock of the sh_data structure.
         spin_unlock(&(sh_data.write_lock));
+        // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
+        // Jumps to the exit label.
         goto exit;
     }
 
     destination = (char *)kzalloc(BLK_SIZE, GFP_KERNEL);
 
     if (!destination)
-    {
+    {   // Prints a kernel log message containing the string "Kzalloc has failed" and the value of the MOD_NAME constant.
         printk("%s: Kzalloc has failed\n", MOD_NAME);
+        // Releases the write lock of the sh_data structure.
         spin_unlock(&(sh_data.write_lock));
+        // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
+        // Jumps to the exit label.
         goto exit;
     }
-
+     // Copies data from user space to kernel space, starting at the address of the destination array plus the size of the metadata and with a maximum size equal to size. The number of bytes that could not be copied is stored in the residual_bytes variable.
     residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
+    // Prints a kernel log message containing the string "Copy_from_user residual bytes" and the value of the MOD_NAME constant followed by the value of the residual_bytes variable.
     AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
-
+    // If the block already contains a message, assigns its reference to the_message variable. Otherwise, allocates memory for a new message with size equal to the sizeof(struct message) and assigns its reference to the_message variable.
     if (get_validity(the_block->metadata))
         the_message = the_block->msg;
     else
         the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
 
     the_metadata = the_block->metadata;
+     // Computes the offset value starting from the index value of the_block structure and assigns it to the ret variable.
     ret = get_offset(the_block->index);
-
+    // Prints a kernel log message containing the string "Old metadata for block at offset", the value of the MOD_NAME constant, the value of the ret variable, the result of the get_index function called with the ret variable as argument and the value of the_metadata variable in hexadecimal format.
     AUDIT printk("%s: Old metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
     // Locally i compute the newest metadata mask
     the_metadata = set_valid(the_metadata);
     the_metadata = set_not_free(the_metadata);
     the_metadata = set_length(the_metadata, size);
-
+    // Sets the valid bit, clears the free bit and sets the length field of the_metadata variable equal to size.
+    // Prints a kernel log message containing the string "New metadata for block at offset", the value of the MOD_NAME constant, the value of the ret variable, the result of the get_index function called with the ret variable as argument and the value of the_metadata variable in hexadecimal format.
     AUDIT printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
+    
     // Update metadata mask in order to make it visible to all readers
     the_block->metadata = the_metadata;
     asm volatile("mfence");
     // the_block->dirtiness = 0;
     // asm volatile("mfence");
 
-    // Insertion with cost O(1) in the messages list
+    // Assigns the reference of the first message and the last message of the sh_data list to the_head and the_tail variables respectively.
     the_head = &sh_data.first;
     the_tail = &sh_data.last;
     the_message->prev = *the_tail;
     asm volatile("mfence");
     if (*the_tail == NULL)
-    {
+    {   
+         // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
+
         *the_head = the_message;
         asm volatile("mfence");
         *the_tail = the_message;
         asm volatile("mfence");
         goto cont;
     }
+    // Otherwise, appends the_message variable at the end of the sh_data list.
     (*the_tail)->next = the_message;
     *the_tail = the_message;
     asm volatile("mfence");
     //stampa_lista(sh_data.first);
 cont:
+    // Assigns the reference to the_block structure to the elem field of the_message variable and the reference to the_message variable to the msg field of the_block structure.
     the_message->elem = the_block;
     asm volatile("mfence");
     the_block->msg = the_message;
     asm volatile("mfence");
-
+    // Releases the write lock of the sh_data structure.
     spin_unlock(&(sh_data.write_lock));
 
+    // Copies the metadata field of the_block structure to the first MD_SIZE bytes of the destination array.
     memcpy(destination, &(the_block->metadata), MD_SIZE);
-  
+    // Prints a kernel log message containing the string "Flushing changes into the device" and the value of the MOD_NAME constant.
     printk("%s: Flushing changes into the device", MOD_NAME);
+    // Reads a block from the device starting at the offset indicated by the ret variable.
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, ret);
     if (!bh)
-    {
+    {   
+        // Prints a kernel log message containing the string "Error in retrieving the block at offset", the value of the MOD_NAME constant and the value of the ret variable.
         AUDIT printk("%s: Error in retrieving the block at offset %d ", MOD_NAME, ret);
+        // Set the ret variable to -5 (error code for I/O error)
         ret = -EIO;
+        // Jumps to the exit_2 label.
         goto exit_2;
     }
     the_dev_blk = (struct dev_blk *)bh->b_data;
 
     if (the_dev_blk != NULL)
-    {
+    {   
+        // Copies BLK_SIZE bytes from the destination array to the buffer data of the bh structure.
         memcpy(bh->b_data, destination, BLK_SIZE);
 #ifndef SYNC_FLUSH
+        // Sets the dirty bit of the bh structure and marks it as requiring writeback.  
         mark_buffer_dirty(bh);
         // the_block->dirtiness = 0;
         // asm volatile("mfence");
+
+        // Prints a kernel log message containing the string "Page-cache write back-daemon will eventually flush changes into the device" and the value of the MOD_NAME constant.
         AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
 #else
         if (sync_dirty_buffer(bh) == 0)
-        {
+        {   
+             // Prints a kernel log message containing the string "Synchronous flush succeded" and the value of the MOD_NAME constant.
             AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
             // the_block->dirtiness = 0;
             // asm volatile("mfence");
         }
         else
+            // Prints a kernel log message containing the string "Synchronous flush not succeded" and the value of the MOD_NAME constant.
             printk("%s: Synchronous flush not succeded", MOD_NAME);
 #endif
     }
+    // Releases the buffer_head structure.
     brelse(bh);
 exit_2:
+    // Frees the memory allocated with kzalloc
     kfree(destination);
 exit:
+    // Atomically subtracts 1 from the bdev_md.count variable and returns the new value.
     __sync_fetch_and_sub(&(bdev_md.count), 1);
+    // Returns the value of the ret variable.
     return ret;
 }
 
