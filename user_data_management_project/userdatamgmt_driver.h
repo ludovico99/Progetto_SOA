@@ -3,11 +3,14 @@
 
 #include <linux/spinlock.h>
 #include "userdatamgmt.h"
-
+#include <linux/version.h>
 // user_data_management_driver.c
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 extern long sys_put_data; //This variable contains the pointer to the system call for putting data.
 extern long sys_get_data; //This variable contains the pointer to the system call for getting data.
 extern long sys_invalidate_data; //This variable contains the pointer to the system call for invalidating data.
+#else
+#endif
 
 // userdatamgmt_driver.c
 extern const struct file_operations dev_fops; //This variable contains the file operation structures for the block device driver.
