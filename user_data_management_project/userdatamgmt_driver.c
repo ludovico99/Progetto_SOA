@@ -71,10 +71,32 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     if (size > SIZE)
         size = SIZE;
     if (size < 0){
-         // Set the ret variable to -22 (error code for invalid argument).
+        // Set the ret variable to -22 (error code for invalid argument).
         ret = -EINVAL;
         goto exit;
     }
+
+    // Locally computing the newest metadata mask
+    the_metadata = set_valid(the_metadata); //Sets the valid bit
+    the_metadata = set_not_free(the_metadata); //clears the free bit
+    the_metadata = set_length(the_metadata, size); //sets the length field of the_metadata variable equal to size
+
+    destination = (char *)kzalloc(BLK_SIZE, GFP_KERNEL);
+
+    if (!destination)
+    {   
+        printk("%s: Kzalloc has failed\n", MOD_NAME);
+        // Releases the write lock of the sh_data structure.
+        spin_unlock(&(sh_data.write_lock));
+        // Set the ret variable to -12 (error code for out of memory).
+        ret = -ENOMEM;
+        goto exit;
+    }
+     // Copies data from user space to kernel space, starting at the address of the destination array plus the size of the metadata and with a maximum size equal to size. The number of bytes that could not be copied is stored in the residual_bytes variable.
+    residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
+    AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
+    // Copies the metadata field of the_block structure to the first MD_SIZE bytes of the destination array.
+    memcpy(destination, &the_metadata, MD_SIZE);
 
     // Acquires the write lock of the sh_data structure.
     spin_lock(&(sh_data.write_lock));
@@ -88,68 +110,48 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         spin_unlock(&(sh_data.write_lock));
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
-        // Jumps to the exit label.
         goto exit;
     }
 
-    destination = (char *)kzalloc(BLK_SIZE, GFP_KERNEL);
-
-    if (!destination)
-    {   
-        printk("%s: Kzalloc has failed\n", MOD_NAME);
-        // Releases the write lock of the sh_data structure.
-        spin_unlock(&(sh_data.write_lock));
-        // Set the ret variable to -12 (error code for out of memory).
-        ret = -ENOMEM;
-        // Jumps to the exit label.
-        goto exit;
-    }
-     // Copies data from user space to kernel space, starting at the address of the destination array plus the size of the metadata and with a maximum size equal to size. The number of bytes that could not be copied is stored in the residual_bytes variable.
-    residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
-    AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
-    // If the block already contains a message, assigns its reference to the_message variable. Otherwise, allocates memory for a new message with size equal to the sizeof(struct message) and assigns its reference to the_message variable.
+    // If the block already contains a message, assigns its reference to the_message variable. 
+    // Otherwise, allocates memory for a new message with size equal to the sizeof(struct message) and assigns its reference to the_message variable.
     if (get_validity(the_block->metadata) && get_free(the_block->metadata))
         the_message = the_block->msg;
     else
         the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
 
-    the_metadata = the_block->metadata;
-     // Computes the offset value starting from the index value of the_block structure and assigns it to the ret variable.
+    the_message->prev = *the_tail;
+    // Computes the offset value starting from the index value of the_block structure and assigns it to the ret variable.
     ret = get_offset(the_block->index);
     
-    AUDIT printk("%s: Old metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
-    // Locally computing the newest metadata mask
-    the_metadata = set_valid(the_metadata);
-    the_metadata = set_not_free(the_metadata);
-    the_metadata = set_length(the_metadata, size);
-    // Sets the valid bit, clears the free bit and sets the length field of the_metadata variable equal to size.
+    AUDIT printk("%s: Old metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_block->metadata);
     AUDIT printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
     
-    // Update metadata mask in order to make it visible to all readers
+    //Updating the metadata mask of the block logically linked to the new valid message
     the_block->metadata = the_metadata;
     asm volatile("mfence");
 
     // Assigns the reference of the first message and the last message of the sh_data list to the_head and the_tail variables respectively.
     the_head = &sh_data.first;
     the_tail = &sh_data.last;
-    the_message->prev = *the_tail;
 
     if (*the_tail == NULL)
     {   
-         // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
+        // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
 
         *the_head = the_message;
         asm volatile("mfence");
         *the_tail = the_message;
         asm volatile("mfence");
-        goto cont;
+        goto insert_completed;
     }
     // Otherwise, appends the_message variable at the end of the sh_data list.
     (*the_tail)->next = the_message;
+    asm volatile("mfence");
     *the_tail = the_message;
     asm volatile("mfence");
-    //stampa_lista(sh_data.first);
-cont:
+
+insert_completed:
     // Assigns the reference to the_block structure to the elem field of the_message variable and the reference to the_message variable to the msg field of the_block structure.
     the_message->elem = the_block;
     asm volatile("mfence");
@@ -158,8 +160,6 @@ cont:
     // Releases the write lock of the sh_data structure.
     spin_unlock(&(sh_data.write_lock));
 
-    // Copies the metadata field of the_block structure to the first MD_SIZE bytes of the destination array.
-    memcpy(destination, &(the_block->metadata), MD_SIZE);
     AUDIT printk("%s: Flushing changes into the device", MOD_NAME);
     // Reads a block from the device starting at the offset indicated by the ret variable.
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, ret);
