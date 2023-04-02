@@ -1,5 +1,3 @@
-
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
@@ -76,7 +74,7 @@ void *my_thread(void *index)
         case GET_DATA:
             memset(buffer, 0, SIZE);
             ret = syscall(GET_DATA, offset, buffer, SIZE);
-            if (ret >= 0)
+            if (ret > 0)
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
             break;
         case INVALIDATE_DATA:
@@ -106,17 +104,11 @@ void *same_blk(void *index)
     int ret = -1;
     int i = 0;
     int arg;
+    int op = 0;
 
     offset = strtol(data[2], NULL, 10);
-    
-    srand(my_id);
 
-    // Genera un numero casuale da 0 a RAND_MAX
-    int op = rand();
-
-    // Calcola il numero casuale da 1 a 3
-    op = op % 3;
-
+    op = my_id % 3;
 
     if (op == 0)
         arg = GET_DATA;

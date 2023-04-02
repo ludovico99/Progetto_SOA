@@ -5,7 +5,7 @@
 #include <linux/fs.h>
 
 #define MOD_NAME "BLOCK-LEVEL DATA MANAGEMENT SERVICE" //This is a macro that defines the name of the module as a string.
-#define  AUDIT if(0) //This is a debugging macro. For now, it is commented out and does not perform any operation.
+#define  AUDIT if(1) //This is a debugging macro. For now, it is commented out and does not perform any operation.
 #define BLK_SIZE 4096 //This macro defines the block size in bytes.
 
 #define MAGIC 0x42424242 //This macro defines a value used to identify user data filesystem's superblock on disk.
@@ -27,6 +27,7 @@
 #define get_index(offset)   ((offset) - 2) //This macro retrieves the index from an offset value.
 #define get_offset(index)   ((index) + 2) //This macro retrieves the offset from an index value.
 
+#define MASK 0x8000000000000000
 
 #define VALIDITY_MASK 0x8000 //This macro defines a bitwise mask for validity flag.
 #define set_valid(i) ((uint16_t)i | (VALIDITY_MASK)) //This macro sets the validity flag of a given value.

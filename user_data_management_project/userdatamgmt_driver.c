@@ -86,8 +86,6 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     if (!destination)
     {   
         printk("%s: Kzalloc has failed\n", MOD_NAME);
-        // Releases the write lock of the sh_data structure.
-        spin_unlock(&(sh_data.write_lock));
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
         goto exit;
@@ -110,7 +108,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         spin_unlock(&(sh_data.write_lock));
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
-        goto exit;
+        goto exit_2;
     }
 
     // If the block already contains a message, assigns its reference to the_message variable. 
@@ -120,7 +118,6 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     else
         the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
 
-    the_message->prev = *the_tail;
     // Computes the offset value starting from the index value of the_block structure and assigns it to the ret variable.
     ret = get_offset(the_block->index);
     
@@ -134,7 +131,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     // Assigns the reference of the first message and the last message of the sh_data list to the_head and the_tail variables respectively.
     the_head = &sh_data.first;
     the_tail = &sh_data.last;
-
+     the_message->prev = *the_tail;
     if (*the_tail == NULL)
     {   
         // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
