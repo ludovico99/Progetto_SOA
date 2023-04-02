@@ -124,11 +124,17 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     return 0;
 }
 
+/*This function is used to unmount the userdatafs filesystem.
+
+Arguments:
+s
+This argument is a pointer to the super_block structure.*/
 static void userdatafs_kill_superblock(struct super_block *s)
 {
-    // wait_queue_head_t unmount_queue;
-    DECLARE_WAIT_QUEUE_HEAD(unmount_queue);
+    DECLARE_WAIT_QUEUE_HEAD(unmount_queue); //This variable is a wait queue for threads that are waiting for unmount to complete.
     int mnt = -1;
+    /*fetches the value of the mounted flag using an atomic compare-and-swap operation, setting the flag to 0 if it was previously 1. 
+    If the mounted flag was already 0, it prints an error message and returns.*/
     mnt = __sync_val_compare_and_swap(&mount_md.mounted, 1, 0);
     if (mnt == 0)
     {
@@ -137,19 +143,34 @@ static void userdatafs_kill_superblock(struct super_block *s)
     }
 
     printk("%s: waiting the pending threads (%d)...", MOD_NAME, bdev_md.count);
-    // AUDIT printk("%s: count is %d",MOD_NAME, bdev_md.count);
+    /*puts the current process to sleep until the condition (bdev_md.count == 0) is true or an interrupt is received.*/
     wait_event_interruptible(unmount_queue, bdev_md.count == 0);
 
+    /*After all pending threads have finished, it calls kill_block_super() to release resources associated with the superblock.*/
     kill_block_super(s);
-
+    
     AUDIT printk("%s: Freeing the struct allocated in the kernel memory", MOD_NAME);
+    /* It then frees the memory allocated for the binary tree and sorted list using the free_tree() and free_list() functions, respectively.*/
     free_tree(sh_data.head);
     free_list(sh_data.first);
+    //Finally, it prints a log message indicating that unmount was successful and returns.
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
 }
 
-// called on file system mounting
+/*This function is used to mount the userdatafs filesystem. It takes four arguments and returns a pointer to the dentry structure on success (or an error pointer on failure).
+Arguments:
+fs_type
+This argument is a pointer to the file system type.
+
+flags
+This argument is the flags that determine how the filesystem should be mounted.
+
+dev_name
+This argument is the name of the block device file that the filesystem is mounted on.
+
+data
+This argument is the data passed by the user when they call mount().*/
 struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data)
 {
     int offset;
@@ -169,13 +190,13 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         printk("%s: the device driver can support only a single mount point at time\n", MOD_NAME);
         return ERR_PTR(-EBUSY);
     }
-
+    //calls the mount_bdev() function to mount the specified block device onto the filesystem. 
     ret = mount_bdev(fs_type, flags, dev_name, data, userdatafs_fill_super);
-
     if (unlikely(IS_ERR(ret)))
         printk("%s: error mounting userdatafs", MOD_NAME);
     else
-    {
+    { // If the mount operation is successful, then it sets the variables used to implement RCU approach and initializes the lock involved.
+    
         mount_md.mount_point = mount_pt;
         AUDIT printk("%s: userdatafs is succesfully mounted on from device %s and mount directory %s\n", MOD_NAME, dev_name, mount_md.mount_point);
 
@@ -183,7 +204,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         bdev_md.path = dev_name;
         // Initialization ...
         init(&sh_data);
-
+        //Allocates memory to the 'array' using kzalloc or vmalloc based on the size of 'unsigned int * NBLOCKS'
         if (sizeof(unsigned int) * NBLOCKS < 128 * 1024) array = kzalloc(sizeof(unsigned int) * NBLOCKS, GFP_KERNEL);
         else array = vmalloc((sizeof(unsigned int) * NBLOCKS));
 
@@ -195,7 +216,8 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         get_balanced_indices(array, 0, NBLOCKS - 1, &id);
         // Creating the tree and the "overlayed" list that contains all valid messages
         for (i = 0; i < NBLOCKS; i++)
-        {
+        {   /*Loops over all blocks in the block device, reads each block from the block device and checks whether it is a valid message or not by reading its metadata. 
+            It then inserts it into a binary tree and sorted list based on its index*/
             index = array[i];
             offset = get_offset(index);
             bh = (struct buffer_head *)sb_bread((bdev_md.bdev)->bd_super, offset);
@@ -240,11 +262,14 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
             }
             brelse(bh);
         }
-exit:
+exit:   
+        /*After the loop completes or if an error occurs, kfree or vfree is called to free the allocated memory. 
+        If any error occurred during the initialization, then it sets the mounted flag to 0.*/
         if (sizeof(unsigned int) * NBLOCKS < 128 * 1024) kfree(array);
         else vfree(array);
         if (unlikely(IS_ERR(ret))) mount_md.mounted = 0;
     }
+    /*Finally, the function returns a pointer to the dentry structure if successful or an error pointer if unsuccessful.*/
     return ret;
 }
 

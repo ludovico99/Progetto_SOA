@@ -29,12 +29,20 @@
 #include "file_system/userdatamgmt_fs.h"
 #include "userdatamgmt_driver.h"
 
+/*This function retrieves data from the device at a given offset and copies it to the user buffer.
+
+Parameters:
+int offset: An integer representing the index of the block from which data is to be retrieved.
+char *destination: A pointer to the buffer where the retrieved data is to be stored.
+ssize_t size: An integer value that specifies the maximum size of data to be retrieved.
+Return Value:
+Returns the number of bytes of data copied to the user buffer upon successful execution, otherwise returns an appropriate error code.*/
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(2, _put_data, char *, source, ssize_t, size)
-{ // System call definition for kernel versions greater or equal to 4.17.0
+{ 
 #else
 asmlinkage int sys_put_data(char *source, ssize_t size)
-{ // System call definition for previous kernel versions
+{ 
 #endif
     struct blk_element *the_block = NULL;
     struct message **the_head = NULL;
@@ -49,7 +57,6 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 
     // Atomically adds 1 to bdev_md.count variable and returns the new value.
     __sync_fetch_and_add(&(bdev_md.count), 1);
-     // Prints a kernel log message containing the string "SYS_PUT_DATA" and the value of the MOD_NAME constant.
     printk("%s: SYS_PUT_DATA \n", MOD_NAME);
 
     if (!mount_md.mounted)
@@ -76,7 +83,6 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 
     if (the_block == NULL)
     {   
-        // Prints a kernel log message containing the string "No blocks available in the device" and the value of the MOD_NAME constant.
         printk("%s: No blocks available in the device\n", MOD_NAME);
         // Releases the write lock of the sh_data structure.
         spin_unlock(&(sh_data.write_lock));
@@ -89,7 +95,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     destination = (char *)kzalloc(BLK_SIZE, GFP_KERNEL);
 
     if (!destination)
-    {   // Prints a kernel log message containing the string "Kzalloc has failed" and the value of the MOD_NAME constant.
+    {   
         printk("%s: Kzalloc has failed\n", MOD_NAME);
         // Releases the write lock of the sh_data structure.
         spin_unlock(&(sh_data.write_lock));
@@ -100,10 +106,9 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     }
      // Copies data from user space to kernel space, starting at the address of the destination array plus the size of the metadata and with a maximum size equal to size. The number of bytes that could not be copied is stored in the residual_bytes variable.
     residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
-    // Prints a kernel log message containing the string "Copy_from_user residual bytes" and the value of the MOD_NAME constant followed by the value of the residual_bytes variable.
     AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
     // If the block already contains a message, assigns its reference to the_message variable. Otherwise, allocates memory for a new message with size equal to the sizeof(struct message) and assigns its reference to the_message variable.
-    if (get_validity(the_block->metadata))
+    if (get_validity(the_block->metadata) && get_free(the_block->metadata))
         the_message = the_block->msg;
     else
         the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
@@ -111,27 +116,24 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     the_metadata = the_block->metadata;
      // Computes the offset value starting from the index value of the_block structure and assigns it to the ret variable.
     ret = get_offset(the_block->index);
-    // Prints a kernel log message containing the string "Old metadata for block at offset", the value of the MOD_NAME constant, the value of the ret variable, the result of the get_index function called with the ret variable as argument and the value of the_metadata variable in hexadecimal format.
+    
     AUDIT printk("%s: Old metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
-    // Locally i compute the newest metadata mask
+    // Locally computing the newest metadata mask
     the_metadata = set_valid(the_metadata);
     the_metadata = set_not_free(the_metadata);
     the_metadata = set_length(the_metadata, size);
     // Sets the valid bit, clears the free bit and sets the length field of the_metadata variable equal to size.
-    // Prints a kernel log message containing the string "New metadata for block at offset", the value of the MOD_NAME constant, the value of the ret variable, the result of the get_index function called with the ret variable as argument and the value of the_metadata variable in hexadecimal format.
     AUDIT printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
     
     // Update metadata mask in order to make it visible to all readers
     the_block->metadata = the_metadata;
     asm volatile("mfence");
-    // the_block->dirtiness = 0;
-    // asm volatile("mfence");
 
     // Assigns the reference of the first message and the last message of the sh_data list to the_head and the_tail variables respectively.
     the_head = &sh_data.first;
     the_tail = &sh_data.last;
     the_message->prev = *the_tail;
-    asm volatile("mfence");
+
     if (*the_tail == NULL)
     {   
          // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
@@ -158,14 +160,12 @@ cont:
 
     // Copies the metadata field of the_block structure to the first MD_SIZE bytes of the destination array.
     memcpy(destination, &(the_block->metadata), MD_SIZE);
-    // Prints a kernel log message containing the string "Flushing changes into the device" and the value of the MOD_NAME constant.
-    printk("%s: Flushing changes into the device", MOD_NAME);
+    AUDIT printk("%s: Flushing changes into the device", MOD_NAME);
     // Reads a block from the device starting at the offset indicated by the ret variable.
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, ret);
     if (!bh)
     {   
-        // Prints a kernel log message containing the string "Error in retrieving the block at offset", the value of the MOD_NAME constant and the value of the ret variable.
-        AUDIT printk("%s: Error in retrieving the block at offset %d ", MOD_NAME, ret);
+        printk("%s: Error in retrieving the block at offset %d ", MOD_NAME, ret);
         // Set the ret variable to -5 (error code for I/O error)
         ret = -EIO;
         // Jumps to the exit_2 label.
@@ -180,22 +180,15 @@ cont:
 #ifndef SYNC_FLUSH
         // Sets the dirty bit of the bh structure and marks it as requiring writeback.  
         mark_buffer_dirty(bh);
-        // the_block->dirtiness = 0;
-        // asm volatile("mfence");
 
-        // Prints a kernel log message containing the string "Page-cache write back-daemon will eventually flush changes into the device" and the value of the MOD_NAME constant.
         AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
 #else
         if (sync_dirty_buffer(bh) == 0)
         {   
-             // Prints a kernel log message containing the string "Synchronous flush succeded" and the value of the MOD_NAME constant.
             AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
-            // the_block->dirtiness = 0;
-            // asm volatile("mfence");
         }
         else
-            // Prints a kernel log message containing the string "Synchronous flush not succeded" and the value of the MOD_NAME constant.
-            printk("%s: Synchronous flush not succeded", MOD_NAME);
+           printk("%s: Synchronous flush not succeded", MOD_NAME);
 #endif
     }
     // Releases the buffer_head structure.
@@ -215,6 +208,13 @@ long sys_put_data = (unsigned long)__x64_sys_put_data;
 #else
 #endif
 
+/*This function retrieves data from the device at a given offset and copies it to the user buffer.
+Parameters:
+int offset: An integer representing the index of the block from which data is to be retrieved.
+char *destination: A pointer to the buffer where the retrieved data is to be stored.
+ssize_t size: An integer value that specifies the maximum size of data to be retrieved
+Return Value:
+Returns the number of bytes of data copied to the user buffer upon successful execution, otherwise returns an appropriate error code.*/
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(3, _get_data, int, offset, char *, destination, ssize_t, size)
 {
@@ -305,6 +305,12 @@ long sys_get_data = (unsigned long)__x64_sys_get_data;
 #else
 #endif
 
+/*This function invalidates data at a given offset.
+
+Parameters:
+int offset: An integer representing the index of the block whose data is to be invalidated.
+Return Value:
+Returns 1 upon successful execution, otherwise returns an appropriate error code.*/
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(1, _invalidate_data, int, offset)
 {
@@ -358,14 +364,8 @@ asmlinkage long sys_invalidate_data(int offset)
     the_message = the_block->msg;
     delete (&sh_data.first, &sh_data.last, the_message);
 
-  
-
-    // stampa_lista (sh_data.first);
-
     the_block->metadata = set_invalid(the_block->metadata);
     asm volatile("mfence"); // make it visible to readers
-    /// the_block->dirtiness = 1;
-    // asm volatile("mfence"); // make it visible to readers
 
     //  move to a new epoch - still under write lock
     updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
@@ -404,15 +404,11 @@ asmlinkage long sys_invalidate_data(int offset)
         memcpy(bh->b_data, &the_block->metadata, MD_SIZE);
 #ifndef SYNC_FLUSH
         mark_buffer_dirty(bh);
-        // the_block->dirtiness = 0;
-        // asm volatile("mfence");
         AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
 #else
         if (sync_dirty_buffer(bh) == 0)
         {
             AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
-            // the_block->dirtiness = 0;
-            // asm volatile("mfence");
         }
         else
             printk("%s: Synchronous flush not succeded", MOD_NAME);
@@ -429,6 +425,15 @@ long sys_invalidate_data = (unsigned long)__x64_sys_invalidate_data;
 #else
 #endif
 
+/*This function reads data from the device.
+
+Parameters:
+struct file *filp: A pointer to a file object representing the file to be read.
+char __user *buf: A buffer in user space where the read data is to be stored.
+size_t len: An integer representing the number of bytes to be read.
+loff_t *off: A pointer to the offset within the file from which the reading operation starts.
+Return Value:
+Returns the number of bytes read upon successful execution, otherwise returns an appropriate error code.*/
 static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
 {
     int str_len = 0, index;
@@ -547,7 +552,13 @@ exit:
     __sync_fetch_and_add(&(sh_data.standing[index]), 1);
     return len - ret;
 }
+/*This function is called when the device file is released by the user.
 
+Parameters:
+struct inode *inode: A pointer to the inode structure containing information about the device.
+struct file *filp: A pointer to a file object representing the file being released.
+Return Value:
+Returns 0 upon successful execution, otherwise returns an appropriate error code.*/
 static int dev_release(struct inode *inode, struct file *filp)
 {
 
@@ -562,7 +573,13 @@ static int dev_release(struct inode *inode, struct file *filp)
     __sync_fetch_and_sub(&(bdev_md.count), 1);
     return 0;
 }
+/*This function is called when the device file is opened by a user.
 
+Parameters:
+struct inode *inode: A pointer to the inode structure containing information about the device.
+struct file *filp: A pointer to a file object representing the file being opened.
+Return Value:
+Returns 0 upon successful execution, otherwise returns an appropriate error code.*/
 static int dev_open(struct inode *inode, struct file *filp)
 {
     struct current_message *curr;

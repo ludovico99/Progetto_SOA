@@ -5,22 +5,15 @@
 #include "userdatamgmt.h"
 
 // user_data_management_driver.c
-extern long sys_put_data;
-extern long sys_get_data;
-extern long sys_invalidate_data;
+extern long sys_put_data; //This variable contains the pointer to the system call for putting data.
+extern long sys_get_data; //This variable contains the pointer to the system call for getting data.
+extern long sys_invalidate_data; //This variable contains the pointer to the system call for invalidating data.
 
 // userdatamgmt_driver.c
-extern const struct file_operations dev_fops;
+extern const struct file_operations dev_fops; //This variable contains the file operation structures for the block device driver.
 
-/* kernel data structures that allow RCU management of the block device:
-    -dev_blk: logical representation of a block in the device
-    -blk_element: represent an element in the RCU list
-    -messages: list that contains blk_element pointer based on the message insertion ordering
-    -bdev_metadata: contains the metadata for the block device
-    -mount metadata: contains the metadata for the mount operation
-    -rcu_data: contains the metadata to implement an RCU approach. Its made up of blk_element
+/*This struct represents an element in a tree that contains the block metadata based on index ordering. Each blk_element contains a message (struct message), metadata (uint16_t) and index (unsigned int).
 */
-
 struct blk_element
 {
     struct blk_element *right;
@@ -30,7 +23,7 @@ struct blk_element
     unsigned int index;
     //uint8_t dirtiness; // if 1 the changes should be flushed into the device
 };
-
+/*This struct contains a pointer to a blk_element and pointers to the next and previous messages in the list.*/
 struct message
 {   
     struct blk_element *elem;
@@ -38,19 +31,22 @@ struct message
     struct message *prev;
 
 };
-
+/*This struct contains the index, blk_element and offset of the current message being processed in the dev_read
+*/
 struct current_message {
     int index;
     struct blk_element * elem;
     loff_t offset;
 };
 
+/*This struct represents the memory representation of a block in the device. It contains metadata (uint16_t) and data (char array).*/
 struct dev_blk
 {   
     uint16_t metadata;
     char data[SIZE];
 };
 
+//This struct contains the count, block_device pointer and path string of the block device.
 struct bdev_metadata
 {   
     unsigned int count __attribute__((aligned(64)));
@@ -58,12 +54,15 @@ struct bdev_metadata
     const char *path; // path to the block device to open
 }__attribute__((aligned(64)));
 
+//This struct contains mounted flag and mount_point string.
 struct mount_metadata
 {   
     int mounted;
     char *mount_point; 
 }__attribute__((aligned(64)));
 
+/*This struct contains the head pointer to blk_element list, first and last pointers to message list, standing (an array of integers representing epochs), epoch (the current epoch), next_epoch_index (the index of the next epoch), and write_lock (a spinlock used to acquire the lock before modifying the shared data structure). 
+All of these variables are used to implement RCU approach.*/
 struct rcu_data
 {   
     struct blk_element *head;                                   // pointer to the shared data structure that contains block metadata based on index ordering
