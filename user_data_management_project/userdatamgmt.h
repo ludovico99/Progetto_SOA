@@ -34,6 +34,7 @@
 #define set_invalid(i) ((uint16_t)i & (~VALIDITY_MASK)) //This macro clears the validity flag of a given value.
 #define get_validity(i) ((uint16_t)(i) >> (sizeof(uint16_t)*8 - 1)) //This macro retrieves the validity flag from a given value.
 
+//The free bit is not exploited at all
 #define FREE_MASK 0x4000 //This macro defines a bitwise mask for free flag.
 #define set_free(i) ((uint16_t)i | (FREE_MASK)) //This macro sets the free flag of a given value.
 #define set_not_free(i) ((uint16_t)i & (~FREE_MASK)) //This macro clears the free flag of a given value.

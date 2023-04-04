@@ -24,7 +24,6 @@ struct blk_element
     struct message * msg;
     uint16_t metadata;
     unsigned int index;
-    //uint8_t dirtiness; // if 1 the changes should be flushed into the device
 };
 /*This struct contains a pointer to a blk_element and pointers to the next and previous messages in the list.*/
 struct message

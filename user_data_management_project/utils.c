@@ -377,7 +377,7 @@ struct blk_element *inorderTraversal(struct blk_element *root)
     {
         return NULL;
     }
-    // Return a block that is invalid or is valid and free
+    // Return a block that is invalid or is valid and free (NOT EXPLOITED)
     if (!get_validity(root->metadata) || (get_validity(root->metadata) && get_free(root->metadata)))
         return root;
 

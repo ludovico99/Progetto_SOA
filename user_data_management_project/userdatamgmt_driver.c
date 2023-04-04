@@ -96,8 +96,23 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     // Copies the metadata field of the_block structure to the first MD_SIZE bytes of the destination array.
     memcpy(destination, &the_metadata, MD_SIZE);
 
+    // Allocates memory for a new message with size equal to the sizeof(struct message) and assigns its reference to the_message variable.
+    the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
+    if (!the_message)
+    {   
+        printk("%s: Kzalloc has failed\n", MOD_NAME);
+        // Set the ret variable to -12 (error code for out of memory).
+        ret = -ENOMEM;
+        goto exit;
+    }
+        
     // Acquires the write lock of the sh_data structure.
     spin_lock(&(sh_data.write_lock));
+
+    // Assigns the reference of the first message and the last message of the sh_data list to the_head and the_tail variables respectively.
+    the_head = &sh_data.first;
+    the_tail = &sh_data.last;
+    
      // Traverses the binary tree starting from sh_data.head and returns the first empty block encountered.
     the_block = inorderTraversal(sh_data.head);
 
@@ -111,31 +126,25 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         goto exit_2;
     }
 
-    // If the block already contains a message, assigns its reference to the_message variable. 
-    // Otherwise, allocates memory for a new message with size equal to the sizeof(struct message) and assigns its reference to the_message variable.
-    if (get_validity(the_block->metadata) && get_free(the_block->metadata))
-        the_message = the_block->msg;
-    else
-        the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
-
     // Computes the offset value starting from the index value of the_block structure and assigns it to the ret variable.
     ret = get_offset(the_block->index);
     
     AUDIT printk("%s: Old metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_block->metadata);
     AUDIT printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
-    
-    //Updating the metadata mask of the block logically linked to the new valid message
+
+    // NOT EXPLOITED (get_free is always 0, false): If the block already contains a message, assigns its reference to the_message variable. 
+    if (get_validity(the_block->metadata) && get_free(the_block->metadata))
+        the_message = the_block->msg;
+      
+    // Assigns the reference to the_block structure to the elem field of the_message variable and 
+    the_message->elem = the_block; //don't need CAS operation since the new message isn't available to readers (if it's not valid and free)
+    the_message->prev = *the_tail; //don't need CAS operation since the new message isn't available to readers (if it's not valid and free)
+
     the_block->metadata = the_metadata;
     asm volatile("mfence");
-
-    // Assigns the reference of the first message and the last message of the sh_data list to the_head and the_tail variables respectively.
-    the_head = &sh_data.first;
-    the_tail = &sh_data.last;
-     the_message->prev = *the_tail;
     if (*the_tail == NULL)
     {   
         // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
-
         *the_head = the_message;
         asm volatile("mfence");
         *the_tail = the_message;
@@ -149,9 +158,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     asm volatile("mfence");
 
 insert_completed:
-    // Assigns the reference to the_block structure to the elem field of the_message variable and the reference to the_message variable to the msg field of the_block structure.
-    the_message->elem = the_block;
-    asm volatile("mfence");
+    //Assigns the reference to the_message variable to the msg field of the_block structure.
     the_block->msg = the_message;
     asm volatile("mfence");
     // Releases the write lock of the sh_data structure.
@@ -348,6 +355,11 @@ asmlinkage long sys_invalidate_data(int offset)
     AUDIT printk("%s: Traverse the tree to find block at index %d", MOD_NAME, offset);
 
     the_block = tree_lookup(sh_data.head, offset);
+    if (the_block == NULL){ //Consistency check: The shared structure should contains all block in the device
+        spin_unlock(&(sh_data.write_lock));
+        ret = -ENODATA;
+        goto exit;
+    }
     if (!get_validity(the_block->metadata))
     {
         spin_unlock(&(sh_data.write_lock));
@@ -378,6 +390,10 @@ asmlinkage long sys_invalidate_data(int offset)
 
     wait_event_interruptible(invalidate_queue, sh_data.standing[index] >= grace_period_threads);
     sh_data.standing[index] = 0;
+
+    //The block has no corrispondence in valid message list
+    the_block->msg = NULL;
+    asm volatile("mfence"); // make it visible to readers
 
     spin_unlock((&sh_data.write_lock));
 
