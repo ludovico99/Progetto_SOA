@@ -509,18 +509,6 @@ void delete(struct message **head, struct message **tail, struct message *to_del
         return;
     }
 
-    if (*head == to_delete)
-    {
-        *head = (*head)->next;
-        asm volatile("mfence"); // make it visible to readers
-    }
-
-    if (*tail == to_delete)
-    {
-        *tail = (*tail)->prev;
-        asm volatile("mfence"); // make it visible to readers
-    }
-
     if (to_delete->next != NULL)
     {
         to_delete->next->prev = to_delete->prev;
@@ -530,8 +518,22 @@ void delete(struct message **head, struct message **tail, struct message *to_del
     if (to_delete->prev != NULL)
     {
         to_delete->prev->next = to_delete->next;
-        asm volatile("mfence"); // make it visible to readers
+        asm volatile("mfence");
     }
+
+    if (*tail == to_delete)
+    {
+        *tail = (*tail)->prev;
+        asm volatile("mfence"); 
+    }
+
+     if (*head == to_delete)
+    {
+        *head = (*head)->next;
+        asm volatile("mfence"); 
+    }
+
+   
     AUDIT printk("%s: The delete operation correctly completed", MOD_NAME);
 }
 

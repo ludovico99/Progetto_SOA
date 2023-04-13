@@ -31,9 +31,20 @@ char *testo[] = {
 	"We hold these truths to be self-evident, that all men are created equal - Thomas Jefferson\n",
 	"Yes we can - Barack Obama\n"};
 
+static int count_strings(char **array)
+{
+	int count = 0;
+	while (array[count] != NULL)
+	{
+		count++;
+	}
+	return count;
+}
+
 int main(int argc, char *argv[])
 {
-	int fd, nbytes;
+	int fd, nbytes, ntesti;
+	int nblocks;
 	ssize_t ret;
 	int index;
 	struct userdatafs_sb_info sb;
@@ -45,7 +56,7 @@ int main(int argc, char *argv[])
 
 	char *file_body = "Wathever content you would like.\n"; // this is the default content of the unique file
 
-	if (argc != 2)
+	if (argc != 3)
 	{
 		printf("Usage: makefs <device>\n");
 		return -1;
@@ -74,10 +85,11 @@ int main(int argc, char *argv[])
 
 	printf("Super block written succesfully\n");
 
+	nblocks = atoi(argv[2]);
 	// write file inode
 	file_inode.mode = S_IFREG;
 	file_inode.inode_no = USERDATAFS_FILE_INODE_NUMBER;
-	file_inode.file_size = NBLOCKS * BLK_SIZE;
+	file_inode.file_size = nblocks * BLK_SIZE;
 	printf("File size is %ld\n", file_inode.file_size);
 	fflush(stdout);
 	ret = write(fd, (char *)&file_inode, sizeof(file_inode));
@@ -106,38 +118,62 @@ int main(int argc, char *argv[])
 	printf("Padding in the inode block written sucessfully.\n");
 
 	// write file datablocks
-	for (int i = 0; i < NBLOCKS; i++)
-	{	index = i % 20; //20 is the total number of texts hardcoded
-		if (MD_SIZE + strlen(testo[index]) > BLK_SIZE)
+	ntesti = count_strings(testo);
+	for (int i = 0; i < nblocks; i++)
+	{ 	metadata = 0;
+		if (MD_SIZE > BLK_SIZE)
 		{
-			printf("The block is too small");
-			return -1;
+				printf("The block is too small");
+				return -1;
 		}
 
-		//metadata = set_not_free(metadata);
-		metadata = set_length(metadata, strlen(testo[index]));
-		metadata = set_valid(metadata);
-		// if (i%2) metadata = set_valid(metadata);
-		// else metadata = set_invalid(metadata);
-		
-		ret = write(fd, &metadata, MD_SIZE);
-		printf("Metadata: %x\n", metadata);
-		if (ret != MD_SIZE)
+		if (i < ntesti - 1)
 		{
-			printf("Writing the metadata has failed.\n");
-			close(fd);
-			return -1;
-		}
+			if (MD_SIZE + strlen(testo[i]) > BLK_SIZE)
+			{
+				printf("The block is too small");
+				return -1;
+			}
 
-		nbytes = strlen(testo[index]);
-		ret = write(fd, testo[index], nbytes);
-		if (ret != nbytes)
-		{
-			printf("Writing file datablock has failed.\n");
-			close(fd);
-			return -1;
+			metadata = set_length(metadata, strlen(testo[i]));
+			metadata = set_valid(metadata);
+
+			ret = write(fd, &metadata, MD_SIZE);
+			printf("Metadata: %x\n", metadata);
+			if (ret != MD_SIZE)
+			{
+				printf("Writing the metadata has failed.\n");
+				close(fd);
+				return -1;
+			}
+
+			nbytes = strlen(testo[i]);
+			ret = write(fd, testo[i], nbytes);
+			if (ret != nbytes)
+			{
+				printf("Writing file datablock has failed.\n");
+				close(fd);
+				return -1;
+			}
+			printf("File block at %d written succesfully.\n", get_offset(i));
 		}
-		printf("File block at %d written succesfully.\n", get_offset(i));
+		else
+		{	
+			
+			metadata = set_invalid(metadata);
+
+			ret = write(fd, &metadata, MD_SIZE);
+			printf("Metadata: %x\n", metadata);
+			if (ret != MD_SIZE)
+			{
+				printf("Writing the metadata has failed.\n");
+				close(fd);
+				return -1;
+			}
+
+			nbytes = 0;
+			printf("File block at %d written succesfully.\n", get_offset(i));
+		}
 
 		nbytes = BLK_SIZE - nbytes - MD_SIZE;
 		block_padding = malloc(nbytes);

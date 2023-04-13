@@ -1,38 +1,4 @@
 #define EXPORT_SYMTAB
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/fs.h>
-#include <linux/timekeeping.h>
-#include <linux/time.h>
-#include <linux/buffer_head.h>
-#include <linux/types.h>
-#include <linux/slab.h>
-#include <linux/string.h>
-#include <linux/kernel.h>
-#include <linux/cdev.h>
-#include <linux/errno.h>
-#include <linux/device.h>
-#include <linux/kprobes.h>
-#include <linux/mutex.h>
-#include <linux/mm.h>
-#include <linux/sched.h>
-#include <linux/version.h>
-#include <linux/interrupt.h>
-#include <linux/vmalloc.h>
-#include <asm/page.h>
-#include <asm/cacheflush.h>
-#include <asm/apic.h>
-#include <asm/io.h>
-#include <linux/syscalls.h>
-
-#include <linux/blk_types.h>
-#include <linux/blkdev.h>
-#include <linux/fs.h>
-#include <linux/namei.h>
-
-#include "userdatamgmt_fs.h"
-#include "../userdatamgmt_driver.h"
-#include "../utils.h"
 
 struct bdev_metadata bdev_md = {0, NULL, NULL};
 struct mount_metadata mount_md = {0, "/"};
@@ -73,7 +39,7 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     inode_disk = (struct userdatafs_inode *)bh->b_data;
     if (NBLOCKS < (inode_disk->file_size / BLK_SIZE))
     {
-
+        printk("%s: Too many block to manage", MOD_NAME);
         brelse(bh);
         return -EINVAL;
     }

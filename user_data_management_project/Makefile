@@ -13,7 +13,6 @@ all:
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) clean
-
 	
 install_progetto_soa:
 	insmod progetto_soa.ko the_syscall_table=$(A)
@@ -23,7 +22,7 @@ remove_progetto_soa:
 	
 create-all:
 	dd bs=4096 count=$(TOT_BLOCKS)  if=/dev/zero of=image
-	./file_system/makefs image
+	./file_system/makefs image $(NBLOCKS)
 	mkdir mount
 	
 mount-fs:

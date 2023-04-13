@@ -37,7 +37,7 @@ struct message
 */
 struct current_message {
     int index;
-    struct blk_element * elem;
+    struct blk_element * curr;
     loff_t offset;
 };
 

@@ -25,7 +25,18 @@
 #include <asm/io.h>
 #include <linux/syscalls.h>
 
+#include <linux/blk_types.h>
+#include <linux/blkdev.h>
+#include <linux/fs.h>
+#include <linux/namei.h>
+
+#include "file_system/userdatamgmt_fs.h"
+#include "userdatamgmt_driver.h"
+#include "utils.h"
+#include "userdatamgmt.h"
 #include "lib/include/scth.h"
+
+#include "userdatamgmt_sc.c"
 #include "file_system/userdatamgmt_fs_src.c"
 #include "userdatamgmt_driver.c"
 
