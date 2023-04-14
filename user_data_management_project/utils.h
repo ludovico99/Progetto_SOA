@@ -13,7 +13,7 @@ extern void free_tree(struct blk_element *);
 extern void get_balanced_indices(int *,  int , int, int*);
 
 extern void insert(struct message **, struct message **,struct message *);
-extern void insert_sorted(struct message **, struct message **,struct message *);
+extern void insert_sorted(struct message **, struct message **,struct message *, unsigned int);
 extern void free_list(struct message*);
 extern void delete(struct message**,struct message **, struct message*);
 extern void stampa_lista(struct message *);

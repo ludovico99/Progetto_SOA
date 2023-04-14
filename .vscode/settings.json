@@ -11,6 +11,13 @@
         "new": "c",
         "sched.h": "c",
         "utils.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "*.tcc": "c",
+        "unordered_map": "c",
+        "numeric": "c",
+        "ostream": "c",
+        "array": "c",
+        "string": "c",
+        "string_view": "c"
     }
 }

@@ -31,22 +31,12 @@ char *testo[] = {
 	"We hold these truths to be self-evident, that all men are created equal - Thomas Jefferson\n",
 	"Yes we can - Barack Obama\n"};
 
-static int count_strings(char **array)
-{
-	int count = 0;
-	while (array[count] != NULL)
-	{
-		count++;
-	}
-	return count;
-}
-
 int main(int argc, char *argv[])
 {
 	int fd, nbytes, ntesti;
 	int nblocks;
+	unsigned int invalid = INVALID_POSITION;
 	ssize_t ret;
-	int index;
 	struct userdatafs_sb_info sb;
 	struct userdatafs_inode root_inode;
 	struct userdatafs_inode file_inode;
@@ -118,34 +108,56 @@ int main(int argc, char *argv[])
 	printf("Padding in the inode block written sucessfully.\n");
 
 	// write file datablocks
-	ntesti = count_strings(testo);
-	for (int i = 0; i < nblocks; i++)
+	ntesti = 20;
+
+	for (unsigned int i = 0; i < nblocks; i++)
 	{ 	metadata = 0;
+	
 		if (MD_SIZE > BLK_SIZE)
 		{
 				printf("The block is too small");
 				return -1;
 		}
 
-		if (i < ntesti - 1)
+		if (i < ntesti)
 		{
 			if (MD_SIZE + strlen(testo[i]) > BLK_SIZE)
 			{
 				printf("The block is too small");
 				return -1;
 			}
+			
+			ret = write(fd, &i, NEXT_SIZE);
+			printf("Message is at position:  %d\n", i);
 
-			metadata = set_length(metadata, strlen(testo[i]));
-			metadata = set_valid(metadata);
-
-			ret = write(fd, &metadata, MD_SIZE);
-			printf("Metadata: %x\n", metadata);
-			if (ret != MD_SIZE)
+			if (ret != NEXT_SIZE)
 			{
 				printf("Writing the metadata has failed.\n");
 				close(fd);
 				return -1;
 			}
+
+			metadata = set_length(metadata, strlen(testo[i]));
+			metadata = set_valid(metadata);
+
+			ret = write(fd, &metadata, MD_SIZE - NEXT_SIZE);
+			printf("Metadata: %x\n", metadata);
+			if (ret != MD_SIZE - NEXT_SIZE)
+			{
+				printf("Writing the metadata has failed.\n");
+				close(fd);
+				return -1;
+			}
+
+			// block_padding = malloc(2);
+			// ret = write(fd, block_padding, 2);
+
+			// if (ret != 2){
+			// 	printf("Writing the padding has failed.\n");
+			// 	close(fd);
+			// 	return -1;
+			// }
+
 
 			nbytes = strlen(testo[i]);
 			ret = write(fd, testo[i], nbytes);
@@ -160,17 +172,26 @@ int main(int argc, char *argv[])
 		else
 		{	
 			
-			metadata = set_invalid(metadata);
-
-			ret = write(fd, &metadata, MD_SIZE);
-			printf("Metadata: %x\n", metadata);
-			if (ret != MD_SIZE)
+			ret = write(fd, &invalid, NEXT_SIZE);
+			printf("Message is at position:  %d\n", invalid);
+			if (ret != NEXT_SIZE)
 			{
 				printf("Writing the metadata has failed.\n");
 				close(fd);
 				return -1;
 			}
 
+			metadata = set_invalid(metadata);
+
+			ret = write(fd, &metadata, MD_SIZE - NEXT_SIZE);
+			printf("Metadata: %x\n", metadata);
+			if (ret != MD_SIZE - NEXT_SIZE)
+			{
+				printf("Writing the metadata has failed.\n");
+				close(fd);
+				return -1;
+			}
+	
 			nbytes = 0;
 			printf("File block at %d written succesfully.\n", get_offset(i));
 		}

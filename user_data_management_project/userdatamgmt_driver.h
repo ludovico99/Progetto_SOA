@@ -24,6 +24,7 @@ struct blk_element
     struct message * msg;
     uint16_t metadata;
     unsigned int index;
+    unsigned int position;
 };
 /*This struct contains a pointer to a blk_element and pointers to the next and previous messages in the list.*/
 struct message
@@ -41,9 +42,10 @@ struct current_message {
     loff_t offset;
 };
 
-/*This struct represents the memory representation of a block in the device. It contains metadata (uint16_t) and data (char array).*/
+/*This struct represents the memory representation of a block in the device. It contains metadata (uint16_t), the position in the valid message double linked list (pos) and data (char array).*/
 struct dev_blk
 {   
+    unsigned int pos;
     uint16_t metadata;
     char data[SIZE];
 };
@@ -51,7 +53,7 @@ struct dev_blk
 //This struct contains the count, block_device pointer and path string of the block device.
 struct bdev_metadata
 {   
-    unsigned int count __attribute__((aligned(64)));
+    unsigned int count;
     struct block_device *bdev;
     const char *path; // path to the block device to open
 }__attribute__((aligned(64)));

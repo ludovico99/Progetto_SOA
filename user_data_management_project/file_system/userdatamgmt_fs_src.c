@@ -97,9 +97,14 @@ s
 This argument is a pointer to the super_block structure.*/
 static void userdatafs_kill_superblock(struct super_block *s)
 {
-    DECLARE_WAIT_QUEUE_HEAD(unmount_queue); //This variable is a wait queue for threads that are waiting for unmount to complete.
+    DECLARE_WAIT_QUEUE_HEAD(unmount_queue); // This variable is a wait queue for threads that are waiting for unmount to complete.
     int mnt = -1;
-    /*fetches the value of the mounted flag using an atomic compare-and-swap operation, setting the flag to 0 if it was previously 1. 
+    int offset = 0;
+    unsigned int pos = 0;
+    struct buffer_head *bh;
+    struct dev_blk *the_block;
+    struct message *curr = sh_data.first;
+    /*fetches the value of the mounted flag using an atomic compare-and-swap operation, setting the flag to 0 if it was previously 1.
     If the mounted flag was already 0, it prints an error message and returns.*/
     mnt = __sync_val_compare_and_swap(&mount_md.mounted, 1, 0);
     if (mnt == 0)
@@ -108,18 +113,52 @@ static void userdatafs_kill_superblock(struct super_block *s)
         return;
     }
 
-    printk("%s: waiting the pending threads (%d)...", MOD_NAME, bdev_md.count);
+    AUDIT printk("%s: waiting the pending threads (%d)...", MOD_NAME, bdev_md.count);
     /*puts the current process to sleep until the condition (bdev_md.count == 0) is true or an interrupt is received.*/
     wait_event_interruptible(unmount_queue, bdev_md.count == 0);
 
+    AUDIT printk("%s: Flushing to the device ordering of user messages ...", MOD_NAME);
+
+    while (curr != NULL)
+    {   
+        offset = get_offset(curr->elem->index);
+
+        bh = (struct buffer_head *)sb_bread((bdev_md.bdev)->bd_super, offset);
+        if (!bh)
+        {
+            printk("%s: Error retrieving the block at offset %d\n", MOD_NAME, offset);
+            break;
+        }
+        the_block = (struct dev_blk *)bh->b_data;
+        if (the_block != NULL)
+        {
+            the_block->pos = pos;
+        }
+#ifndef SYNC_FLUSH
+        // Sets the dirty bit of the bh structure and marks it as requiring writeback.
+        mark_buffer_dirty(bh);
+
+        AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
+#else
+        if (sync_dirty_buffer(bh) == 0)
+        {
+            AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
+        }
+        else
+            printk("%s: Synchronous flush not succeded", MOD_NAME);
+#endif
+        brelse(bh);
+        pos ++;
+        curr = curr->next;
+    }
     /*After all pending threads have finished, it calls kill_block_super() to release resources associated with the superblock.*/
     kill_block_super(s);
-    
+
     AUDIT printk("%s: Freeing the struct allocated in the kernel memory", MOD_NAME);
     /* It then frees the memory allocated for the binary tree and sorted list using the free_tree() and free_list() functions, respectively.*/
     free_tree(sh_data.head);
     free_list(sh_data.first);
-    //Finally, it prints a log message indicating that unmount was successful and returns.
+    // Finally, it prints a log message indicating that unmount was successful and returns.
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
 }
@@ -143,6 +182,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
     int index;
     int id = 0;
     struct buffer_head *bh;
+    struct dev_blk *the_block;
     struct blk_element *blk_elem;
     struct message *message;
     struct dentry *ret;
@@ -156,13 +196,13 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         printk("%s: the device driver can support only a single mount point at time\n", MOD_NAME);
         return ERR_PTR(-EBUSY);
     }
-    //calls the mount_bdev() function to mount the specified block device onto the filesystem. 
+    // calls the mount_bdev() function to mount the specified block device onto the filesystem.
     ret = mount_bdev(fs_type, flags, dev_name, data, userdatafs_fill_super);
     if (unlikely(IS_ERR(ret)))
         printk("%s: error mounting userdatafs", MOD_NAME);
     else
     { // If the mount operation is successful, then it sets the variables used to implement RCU approach and initializes the lock involved.
-    
+
         mount_md.mount_point = mount_pt;
         AUDIT printk("%s: userdatafs is succesfully mounted on from device %s and mount directory %s\n", MOD_NAME, dev_name, mount_md.mount_point);
 
@@ -170,9 +210,11 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         bdev_md.path = dev_name;
         // Initialization ...
         init(&sh_data);
-        //Allocates memory to the 'array' using kzalloc or vmalloc based on the size of 'unsigned int * NBLOCKS'
-        if (sizeof(unsigned int) * NBLOCKS < 128 * 1024) array = kzalloc(sizeof(unsigned int) * NBLOCKS, GFP_KERNEL);
-        else array = vmalloc((sizeof(unsigned int) * NBLOCKS));
+        // Allocates memory to the 'array' using kzalloc or vmalloc based on the size of 'unsigned int * NBLOCKS'
+        if (sizeof(unsigned int) * NBLOCKS < 128 * 1024)
+            array = kzalloc(sizeof(unsigned int) * NBLOCKS, GFP_KERNEL);
+        else
+            array = vmalloc((sizeof(unsigned int) * NBLOCKS));
 
         if (!array)
         {
@@ -182,8 +224,8 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         get_balanced_indices(array, 0, NBLOCKS - 1, &id);
         // Creating the tree and the "overlayed" list that contains all valid messages
         for (i = 0; i < NBLOCKS; i++)
-        {   /*Loops over all blocks in the block device, reads each block from the block device and checks whether it is a valid message or not by reading its metadata. 
-            It then inserts it into a binary tree and sorted list based on its index*/
+        { /*Loops over all blocks in the block device, reads each block from the block device and checks whether it is a valid message or not by reading its metadata.
+          It then inserts it into a binary tree and sorted list based on its index*/
             index = array[i];
             offset = get_offset(index);
             bh = (struct buffer_head *)sb_bread((bdev_md.bdev)->bd_super, offset);
@@ -193,7 +235,8 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                 ret = ERR_PTR(-EIO);
                 goto exit;
             }
-            if (bh->b_data != NULL)
+            the_block = (struct dev_blk *)bh->b_data;
+            if (the_block != NULL)
             {
                 // AUDIT printk("%s: retrieved the block at offset %d (index %d)\n", MOD_NAME, offset, i);
                 blk_elem = (struct blk_element *)kzalloc(sizeof(struct blk_element), GFP_KERNEL);
@@ -204,13 +247,13 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     ret = ERR_PTR(-ENOMEM);
                     goto exit;
                 }
-                blk_elem->metadata = ((struct dev_blk *)bh->b_data)->metadata;
+                blk_elem->metadata = the_block->metadata;
                 blk_elem->index = index;
-
-                AUDIT printk("%s: Block at offset %d (index %d) contains the message = %s\n", MOD_NAME, offset, index, ((struct dev_blk *)bh->b_data)->data);
+                blk_elem->position = the_block->pos;
+                AUDIT printk("%s: Block at offset %d (index %d), at position %d, contains the message = %s\n", MOD_NAME, offset, index, the_block->pos, the_block->data);
                 tree_insert(&sh_data.head, blk_elem);
 
-                if (get_validity(((struct dev_blk *)bh->b_data)->metadata))
+                if (get_validity(the_block->metadata))
                 {
                     message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
                     if (!message)
@@ -223,17 +266,22 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     }
                     message->elem = blk_elem;
                     blk_elem->msg = message;
-                    insert_sorted(&sh_data.first, &sh_data.last, message);
+                    insert_sorted(&sh_data.first, &sh_data.last, message, the_block->pos);
                 }
+                
             }
             brelse(bh);
         }
-exit:   
-        /*After the loop completes or if an error occurs, kfree or vfree is called to free the allocated memory. 
-        If any error occurred during the initialization, then it sets the mounted flag to 0.*/
-        if (sizeof(unsigned int) * NBLOCKS < 128 * 1024) kfree(array);
-        else vfree(array);
-        if (unlikely(IS_ERR(ret))) mount_md.mounted = 0;
+        
+        exit:
+            /*After the loop completes or if an error occurs, kfree or vfree is called to free the allocated memory.
+            If any error occurred during the initialization, then it sets the mounted flag to 0.*/
+            if (sizeof(unsigned int) * NBLOCKS < 128 * 1024)
+                kfree(array);
+            else
+                vfree(array);
+        if (unlikely(IS_ERR(ret)))
+            mount_md.mounted = 0;
     }
     /*Finally, the function returns a pointer to the dentry structure if successful or an error pointer if unsuccessful.*/
     return ret;

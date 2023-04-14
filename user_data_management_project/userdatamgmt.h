@@ -18,7 +18,8 @@
 #define UNIQUE_FILE_NAME "the-file" //This macro defines a unique file name
 
 #define EPOCHS (2) //This macro defines the number of times an operation can be performed before it has to wait for next epoch.
-#define MD_SIZE sizeof(uint16_t) //This macro defines the size of the metadata (in bytes).
+#define NEXT_SIZE sizeof(unsigned int)
+#define MD_SIZE (sizeof(uint16_t) + NEXT_SIZE) //This macro defines the size of the metadata (in bytes).
 #define SIZE (BLK_SIZE - MD_SIZE) //This macro defines the maximum size of user data (in bytes).
 //#define SYNC_FLUSH 
 #define NBLOCKS 20 //This macro defines the number of blocks the application will use.
@@ -44,6 +45,8 @@
 #define LEN_MASK 0xF000 //This macro defines a bitwise mask for length field.
 #define get_length(i) ((uint16_t)(i) & (~LEN_MASK)) //This macro retrieves the length field from a given value.
 #define set_length(mask,val) (((uint16_t)(mask) & (VALIDITY_MASK | FREE_MASK)) | (((uint16_t)val) & (~LEN_MASK))) //This macro sets the length field of a given value.
+
+#define INVALID_POSITION 0xFFFFFFFF
 
 extern struct rcu_data sh_data;
 extern struct bdev_metadata bdev_md;

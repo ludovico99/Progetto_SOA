@@ -436,10 +436,9 @@ struct message **tail: Pointer to the tail of the list
 struct message *to_insert: Pointer to the message to be inserted
 Return Value:
 This function does not return anything.*/
-void insert_sorted(struct message ** head, struct message **tail, struct message *to_insert) {
+void insert_sorted(struct message ** head, struct message **tail, struct message *to_insert, unsigned int position) {
 
     struct message* curr;
-    int index = to_insert -> elem ->index;
     to_insert->prev = *tail;
     to_insert->next = NULL;
 
@@ -449,7 +448,7 @@ void insert_sorted(struct message ** head, struct message **tail, struct message
     }
     else {
         curr = *head;
-        while (curr != NULL && curr->elem->index < index) {
+        while (curr != NULL && curr->elem->position < position) {
             curr = curr->next;
         }
 
@@ -509,10 +508,10 @@ void delete(struct message **head, struct message **tail, struct message *to_del
         return;
     }
 
-    if (to_delete->next != NULL)
+    if (*head == to_delete)
     {
-        to_delete->next->prev = to_delete->prev;
-        asm volatile("mfence"); // make it visible to readers
+        *head = (*head)->next;
+        asm volatile("mfence"); 
     }
 
     if (to_delete->prev != NULL)
@@ -521,17 +520,19 @@ void delete(struct message **head, struct message **tail, struct message *to_del
         asm volatile("mfence");
     }
 
+    if (to_delete->next != NULL)
+    {
+        to_delete->next->prev = to_delete->prev;
+        asm volatile("mfence"); // make it visible to readers
+    }
+
     if (*tail == to_delete)
     {
         *tail = (*tail)->prev;
         asm volatile("mfence"); 
     }
 
-     if (*head == to_delete)
-    {
-        *head = (*head)->next;
-        asm volatile("mfence"); 
-    }
+     
 
    
     AUDIT printk("%s: The delete operation correctly completed", MOD_NAME);

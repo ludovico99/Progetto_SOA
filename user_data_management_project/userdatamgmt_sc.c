@@ -1,6 +1,5 @@
 #define EXPORT_SYMTAB
 
-
 /*This function retrieves data from the device at a given offset and copies it to the user buffer.
 
 Parameters:
@@ -67,7 +66,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
     AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
     // Copies the metadata field of the_block structure to the first MD_SIZE bytes of the destination array.
-    memcpy(destination, &the_metadata, MD_SIZE);
+    memcpy(destination + NEXT_SIZE, &the_metadata, MD_SIZE - NEXT_SIZE);
 
     // Allocates memory for a new message with size equal to the sizeof(struct message) and assigns its reference to the_message variable.
     the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
@@ -76,7 +75,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         printk("%s: Kzalloc has failed\n", MOD_NAME);
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
-        goto exit;
+        goto exit_2;
     }
 
     // Acquires the write lock of the sh_data structure.
@@ -104,6 +103,36 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 
     AUDIT printk("%s: Old metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_block->metadata);
     AUDIT printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
+
+    /*NOT EXPLOITED (get_free is always 0, false): If the block already contains a message, assigns its reference to the_message variable.
+    if (get_validity(the_block->metadata) && get_free(the_block->metadata) the_message = the_block->msg;*/
+
+    // Assigns the reference to the_block structure to the elem field of the_message variable and
+    the_message->elem = the_block; // don't need locked operation since the new message isn't available to readers (if it's not valid and free)
+    the_message->prev = *the_tail; // don't need locked operation since the new message isn't available to readers (if it's not valid and free)
+    the_block->msg = the_message;  // Assigns the reference to the_message variable to the msg field of the_block structure.
+
+    the_block->metadata = the_metadata;
+    asm volatile("mfence");
+
+    if (*the_tail == NULL)
+    {
+        // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
+        *the_head = the_message;
+        asm volatile("mfence");
+        *the_tail = the_message;
+        asm volatile("mfence");
+        goto insert_completed;
+    }
+    // Otherwise, appends the_message variable at the end of the sh_data list.
+    (*the_tail)->next = the_message;
+    asm volatile("mfence");
+    *the_tail = the_message;
+    asm volatile("mfence");
+
+insert_completed:
+    // Releases the write lock of the sh_data structure.
+    spin_unlock(&(sh_data.write_lock));
 
     AUDIT printk("%s: Flushing changes into the device", MOD_NAME);
     // Reads a block from the device starting at the offset indicated by the ret variable.
@@ -136,38 +165,10 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         else
             printk("%s: Synchronous flush not succeded", MOD_NAME);
 #endif
-
-        /*NOT EXPLOITED (get_free is always 0, false): If the block already contains a message, assigns its reference to the_message variable.
-        if (get_validity(the_block->metadata) && get_free(the_block->metadata) the_message = the_block->msg;*/
-
-        // Assigns the reference to the_block structure to the elem field of the_message variable and
-        the_message->elem = the_block; // don't need locked operation since the new message isn't available to readers (if it's not valid and free)
-        the_message->prev = *the_tail; // don't need locked operation since the new message isn't available to readers (if it's not valid and free)
-        the_block->msg = the_message;  // Assigns the reference to the_message variable to the msg field of the_block structure.
-
-        the_block->metadata = the_metadata;
-        asm volatile("mfence");
-
-        if (*the_tail == NULL)
-        {
-            // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
-            *the_head = the_message;
-            asm volatile("mfence");
-            *the_tail = the_message;
-            asm volatile("mfence");
-            goto exit_2;
-        }
-        // Otherwise, appends the_message variable at the end of the sh_data list.
-        (*the_tail)->next = the_message;
-        asm volatile("mfence");
-        *the_tail = the_message;
-        asm volatile("mfence");
     }
     // Releases the buffer_head structure.
     brelse(bh);
 exit_2:
-    // Releases the write lock of the sh_data structure.
-    spin_unlock(&(sh_data.write_lock));
     // Frees the memory allocated with kzalloc
     kfree(destination);
 exit:
@@ -339,6 +340,38 @@ asmlinkage long sys_invalidate_data(int offset)
         ret = -ENODATA;
         goto exit;
     }
+    AUDIT printk("%s: Deleting the message from valid messages list...", MOD_NAME);
+
+    the_message = the_block->msg;
+    delete (&sh_data.first, &sh_data.last, the_message);
+
+    the_block->metadata = the_metadata;
+    asm volatile("mfence"); // make it visible to readers
+
+    //  move to a new epoch - still under write lock
+    updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
+
+    sh_data.next_epoch_index += 1;
+    sh_data.next_epoch_index %= 2;
+
+    last_epoch = __atomic_exchange_n(&(sh_data.epoch), updated_epoch, __ATOMIC_SEQ_CST);
+    index = (last_epoch & MASK) ? 1 : 0;
+    grace_period_threads = last_epoch & (~MASK);
+
+    AUDIT printk("%s: Invalidation: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
+
+    wait_event_interruptible(invalidate_queue, sh_data.standing[index] >= grace_period_threads);
+    sh_data.standing[index] = 0;
+
+    // The block has no corrispondence in valid message list
+    the_block->msg = NULL;
+    asm volatile("mfence"); // make it visible to readers
+
+    spin_unlock((&sh_data.write_lock));
+
+    AUDIT printk("%s: Removing invalidated message from valid messages list...\n", MOD_NAME);
+    if (the_message)
+        kfree(the_message);
 
     // FLUSHING METADATA CHANGES INTO THE DEVICE
     printk("%s: Flushing metadata changes into the device", MOD_NAME);
@@ -346,16 +379,18 @@ asmlinkage long sys_invalidate_data(int offset)
     if (!bh)
     {
         AUDIT printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
-        spin_unlock((&sh_data.write_lock));
         ret = -EIO;
         goto exit;
     }
     blk = (struct dev_blk *)bh->b_data;
 
     if (blk != NULL)
-    {   
+    {
         the_metadata = set_invalid(the_block->metadata);
-        memcpy(bh->b_data, &the_metadata, MD_SIZE);
+        memcpy(&(blk->metadata), &the_metadata, MD_SIZE - NEXT_SIZE);
+
+        blk->pos = INVALID_POSITION;
+
 #ifndef SYNC_FLUSH
         mark_buffer_dirty(bh);
         AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
@@ -368,38 +403,6 @@ asmlinkage long sys_invalidate_data(int offset)
             printk("%s: Synchronous flush not succeded", MOD_NAME);
 #endif
         brelse(bh);
-
-        AUDIT printk("%s: Deleting the message from valid messages list...", MOD_NAME);
-
-        the_message = the_block->msg;
-        delete (&sh_data.first, &sh_data.last, the_message);
-
-        the_block->metadata = the_metadata;
-        asm volatile("mfence"); // make it visible to readers
-
-        //  move to a new epoch - still under write lock
-        updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
-
-        sh_data.next_epoch_index += 1;
-        sh_data.next_epoch_index %= 2;
-
-        last_epoch = __atomic_exchange_n(&(sh_data.epoch), updated_epoch, __ATOMIC_SEQ_CST);
-        index = (last_epoch & MASK) ? 1 : 0;
-        grace_period_threads = last_epoch & (~MASK);
-
-        AUDIT printk("%s: Invalidation: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
-
-        wait_event_interruptible(invalidate_queue, sh_data.standing[index] >= grace_period_threads);
-        sh_data.standing[index] = 0;
-
-        // The block has no corrispondence in valid message list
-        the_block->msg = NULL;
-        asm volatile("mfence"); // make it visible to readers
-
-        spin_unlock((&sh_data.write_lock));
-        AUDIT printk("%s: Removing invalidated message from valid messages list...\n", MOD_NAME);
-        if (the_message) kfree(the_message);
-
     }
 exit:
     __sync_fetch_and_sub(&(bdev_md.count), 1);
