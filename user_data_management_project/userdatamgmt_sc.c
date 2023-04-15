@@ -118,6 +118,8 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     if (*the_tail == NULL)
     {
         // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
+
+        AUDIT printk("%s: List is empty", MOD_NAME);
         *the_head = the_message;
         asm volatile("mfence");
         *the_tail = the_message;

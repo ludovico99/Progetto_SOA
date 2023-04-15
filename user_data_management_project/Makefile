@@ -30,5 +30,5 @@ mount-fs:
 	mount -o loop -t userdatafs image $(MOUNT_DIR)
 
 unmount-fs:
-	umount ./mount ; rmdir ./mount/
+	umount $(MOUNT_DIR) ; rmdir $(MOUNT_DIR)
 

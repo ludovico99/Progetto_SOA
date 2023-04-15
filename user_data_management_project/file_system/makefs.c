@@ -8,8 +8,9 @@
 #include <string.h>
 
 #include "userdatamgmt_fs.h"
+#define NTESTI 20
 
-char *testo[] = {
+char *testo[NTESTI] = {
 	"I have a dream  - Martin Luther King Jr\n",
 	"Ask not what your country can do for you, ask what you can do for your country  - John F. Kennedy\n",
 	"All men are created equal - Thomas Jefferson\n",
@@ -33,7 +34,7 @@ char *testo[] = {
 
 int main(int argc, char *argv[])
 {
-	int fd, nbytes, ntesti;
+	int fd, nbytes;
 	int nblocks;
 	unsigned int invalid = INVALID_POSITION;
 	ssize_t ret;
@@ -108,8 +109,6 @@ int main(int argc, char *argv[])
 	printf("Padding in the inode block written sucessfully.\n");
 
 	// write file datablocks
-	ntesti = 20;
-
 	for (unsigned int i = 0; i < nblocks; i++)
 	{ 	metadata = 0;
 	
@@ -119,7 +118,7 @@ int main(int argc, char *argv[])
 				return -1;
 		}
 
-		if (i < ntesti)
+		if (i < NTESTI)
 		{
 			if (MD_SIZE + strlen(testo[i]) > BLK_SIZE)
 			{
@@ -148,16 +147,6 @@ int main(int argc, char *argv[])
 				close(fd);
 				return -1;
 			}
-
-			// block_padding = malloc(2);
-			// ret = write(fd, block_padding, 2);
-
-			// if (ret != 2){
-			// 	printf("Writing the padding has failed.\n");
-			// 	close(fd);
-			// 	return -1;
-			// }
-
 
 			nbytes = strlen(testo[i]);
 			ret = write(fd, testo[i], nbytes);

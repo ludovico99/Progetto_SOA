@@ -46,7 +46,7 @@
 #define get_length(i) ((uint16_t)(i) & (~LEN_MASK)) //This macro retrieves the length field from a given value.
 #define set_length(mask,val) (((uint16_t)(mask) & (VALIDITY_MASK | FREE_MASK)) | (((uint16_t)val) & (~LEN_MASK))) //This macro sets the length field of a given value.
 
-#define INVALID_POSITION 0xFFFFFFFF
+#define INVALID_POSITION 0xFFFFFFFF //This macro defines the value used to express an invalid position in a block
 
 extern struct rcu_data sh_data;
 extern struct bdev_metadata bdev_md;

@@ -18,7 +18,6 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     struct current_message *the_message = (struct current_message *)filp->private_data;
     loff_t my_off = the_message ->offset; // In this way each open has its own private copy and *off can't be changed concurrently
     uint64_t file_size = the_inode->i_size;
-    unsigned long my_epoch;
     struct super_block *sb = filp->f_path.dentry->d_inode->i_sb;
     int ret = 0;
     loff_t offset;
@@ -38,7 +37,6 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     { // No valid messages available
         return 0;
     }
-    my_epoch = __sync_fetch_and_add(&(sh_data.epoch), 1);
     
     the_block = the_message->curr;
     // compute the actual index of the the block to be read from device
@@ -52,8 +50,6 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
             block_to_read = get_offset(sh_data.first->elem->index);
         else
         {
-            index = (my_epoch & MASK) ? 1 : 0;
-            __sync_fetch_and_add(&(sh_data.standing[index]), 1);
             return 0;
         }
     }
@@ -61,14 +57,11 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     // check that *off is within boundaries
     if (my_off >= file_size)
     {   
-        index = (my_epoch & MASK) ? 1 : 0;
-        __sync_fetch_and_add(&(sh_data.standing[index]), 1);
         return 0;
     }
 
     if (block_to_read > NBLOCKS + 2){// Consistency check
-        index = (my_epoch & MASK) ? 1 : 0;
-        __sync_fetch_and_add(&(sh_data.standing[index]), 1);
+
          return 0; 
     }
     
@@ -78,8 +71,6 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     if (!bh)
     {
         printk("%s: Error in retrieving the block %d", MOD_NAME, block_to_read);
-        index = (my_epoch & MASK) ? 1 : 0;
-        __sync_fetch_and_add(&(sh_data.standing[index]), 1);
         return -EIO;
     }
 
@@ -122,8 +113,7 @@ exit:
     brelse(bh);
     *off = my_off;
     the_message->offset = my_off;
-    index = (my_epoch & MASK) ? 1 : 0;
-    __sync_fetch_and_add(&(sh_data.standing[index]), 1);
+    
     return len - ret;
 }
 /*This function is called when the device file is released by the user.
@@ -135,15 +125,22 @@ Return Value:
 Returns 0 upon successful execution, otherwise returns an appropriate error code.*/
 static int dev_release(struct inode *inode, struct file *filp)
 {
-
+    int index;
+    unsigned long my_epoch = ((struct current_message *)filp->private_data)->my_epoch;
     AUDIT printk("%s: Device release has been invoked: the thread %d trying to release the device file\n ", MOD_NAME, current->pid);
 
     if (!mount_md.mounted)
-    {
+    {   
+        index = (my_epoch & MASK) ? 1 : 0;
+        __sync_fetch_and_add(&(sh_data.standing[index]), 1);
         printk("%s: The device is not mounted", MOD_NAME);
         return -ENODEV;
     }
+    
+    index = (my_epoch & MASK) ? 1 : 0;
+    __sync_fetch_and_add(&(sh_data.standing[index]), 1);
     kfree(filp->private_data);
+
     __sync_fetch_and_sub(&(bdev_md.count), 1);
     return 0;
 }
@@ -157,7 +154,7 @@ Returns 0 upon successful execution, otherwise returns an appropriate error code
 static int dev_open(struct inode *inode, struct file *filp)
 {
     struct current_message *curr;
-    AUDIT printk("%s: Device open has been invoked: the thread %d trying to open file at offset %lld\n ", MOD_NAME, current->pid, filp->f_pos);
+    AUDIT printk("%s: Device open has been invoked: the thread %d trying to open file at offset %lld", MOD_NAME, current->pid, filp->f_pos);
 
     if (!mount_md.mounted)
     {
@@ -172,13 +169,15 @@ static int dev_open(struct inode *inode, struct file *filp)
     curr = (struct current_message *)kzalloc(sizeof(struct current_message), GFP_KERNEL);
     if (!curr)
     {
-        printk("%s: Error allocationg current_message struct\n", MOD_NAME);
+        printk("%s: Error allocationg current_message struct", MOD_NAME);
         return -ENOMEM;
     }
-    curr->index = -1;
-    filp->private_data = curr;
-    // Avoiding that a concurrent thread may have killed the sb with unomunt operation
     __sync_fetch_and_add(&(bdev_md.count), 1);
+    curr->index = -1;
+    curr -> my_epoch = __sync_fetch_and_add(&(sh_data.epoch), 1);
+    filp->private_data = curr;
+    // Avoiding that a concurrent thread may have killed the sb with unomunt operation 
+    
     return 0;
 }
 

@@ -434,6 +434,7 @@ Parameters:
 struct message **head: Pointer to the head of the list
 struct message **tail: Pointer to the tail of the list
 struct message *to_insert: Pointer to the message to be inserted
+unsigned int position: Express the position in the double linked list where message should be placed
 Return Value:
 This function does not return anything.*/
 void insert_sorted(struct message ** head, struct message **tail, struct message *to_insert, unsigned int position) {
@@ -532,9 +533,7 @@ void delete(struct message **head, struct message **tail, struct message *to_del
         asm volatile("mfence"); 
     }
 
-     
-
-   
+    
     AUDIT printk("%s: The delete operation correctly completed", MOD_NAME);
 }
 

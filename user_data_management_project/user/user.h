@@ -8,7 +8,8 @@
 
 #define MULTI_OPS -1
 #define SAME_BLOCK_OPS -2
-// For kernel 5.19
+
+// For kernel 5.15
 #define PUT_DATA 156
 #define GET_DATA 174
 #define INVALIDATE_DATA 177

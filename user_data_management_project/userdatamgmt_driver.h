@@ -40,6 +40,7 @@ struct current_message {
     int index;
     struct blk_element * curr;
     loff_t offset;
+    unsigned long my_epoch;
 };
 
 /*This struct represents the memory representation of a block in the device. It contains metadata (uint16_t), the position in the valid message double linked list (pos) and data (char array).*/
