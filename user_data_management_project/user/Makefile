@@ -21,7 +21,7 @@ get_data:
 	./user $(get_data_sys_num) 19
 
 invalidate_data:
-	./user $(invalidate_data_sys_num) 0
+	./user $(invalidate_data_sys_num) 19
 
 puts:
 	./user $(put_data_sys_num)

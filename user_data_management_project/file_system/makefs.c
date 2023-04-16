@@ -10,7 +10,7 @@
 #include "userdatamgmt_fs.h"
 #define NTESTI 20
 
-char *testo[NTESTI] = {
+char *testo[] = {
 	"I have a dream  - Martin Luther King Jr\n",
 	"Ask not what your country can do for you, ask what you can do for your country  - John F. Kennedy\n",
 	"All men are created equal - Thomas Jefferson\n",
@@ -34,9 +34,8 @@ char *testo[NTESTI] = {
 
 int main(int argc, char *argv[])
 {
-	int fd, nbytes;
-	int nblocks;
-	unsigned int invalid = INVALID_POSITION;
+	int fd, nbytes,i,nblocks;
+	int invalid = INVALID_POSITION;
 	ssize_t ret;
 	struct userdatafs_sb_info sb;
 	struct userdatafs_inode root_inode;
@@ -74,7 +73,7 @@ int main(int argc, char *argv[])
 		return ret;
 	}
 
-	printf("Super block written succesfully\n");
+	AUDIT printf("Super block written succesfully\n");
 
 	nblocks = atoi(argv[2]);
 	// write file inode
@@ -92,7 +91,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	printf("File inode written succesfully.\n");
+	AUDIT printf("File inode written succesfully.\n");
 
 	// padding for block 1
 	nbytes = BLK_SIZE - sizeof(file_inode);
@@ -106,28 +105,28 @@ int main(int argc, char *argv[])
 		close(fd);
 		return -1;
 	}
-	printf("Padding in the inode block written sucessfully.\n");
+	AUDIT printf("Padding in the inode block written sucessfully.\n");
 
 	// write file datablocks
-	for (unsigned int i = 0; i < nblocks; i++)
+	for (i = 0; i < nblocks; i++)
 	{ 	metadata = 0;
-	
+		int index = i % NTESTI;
 		if (MD_SIZE > BLK_SIZE)
 		{
 				printf("The block is too small");
 				return -1;
 		}
 
-		if (i < NTESTI)
-		{
-			if (MD_SIZE + strlen(testo[i]) > BLK_SIZE)
+		// if (i < NTESTI)
+		// {
+			if (MD_SIZE + strlen(testo[index]) > BLK_SIZE)
 			{
 				printf("The block is too small");
 				return -1;
 			}
 			
 			ret = write(fd, &i, NEXT_SIZE);
-			printf("Message is at position:  %d\n", i);
+			AUDIT printf("Message is at position:  %d\n", i);
 
 			if (ret != NEXT_SIZE)
 			{
@@ -136,11 +135,11 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 
-			metadata = set_length(metadata, strlen(testo[i]));
+			metadata = set_length(metadata, strlen(testo[index]));
 			metadata = set_valid(metadata);
 
 			ret = write(fd, &metadata, MD_SIZE - NEXT_SIZE);
-			printf("Metadata: %x\n", metadata);
+			AUDIT printf("Metadata: %x\n", metadata);
 			if (ret != MD_SIZE - NEXT_SIZE)
 			{
 				printf("Writing the metadata has failed.\n");
@@ -148,42 +147,42 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 
-			nbytes = strlen(testo[i]);
-			ret = write(fd, testo[i], nbytes);
+			nbytes = strlen(testo[index]);
+			ret = write(fd, testo[index], nbytes);
 			if (ret != nbytes)
 			{
 				printf("Writing file datablock has failed.\n");
 				close(fd);
 				return -1;
 			}
-			printf("File block at %d written succesfully.\n", get_offset(i));
-		}
-		else
-		{	
+			AUDIT printf("File block at %d written succesfully.\n", get_offset(i));
+		//}
+		// else
+		// {	
 			
-			ret = write(fd, &invalid, NEXT_SIZE);
-			printf("Message is at position:  %d\n", invalid);
-			if (ret != NEXT_SIZE)
-			{
-				printf("Writing the metadata has failed.\n");
-				close(fd);
-				return -1;
-			}
+		// 	ret = write(fd, &invalid, NEXT_SIZE);
+		// 	AUDIT printf("Message is at position:  %d\n", invalid);
+		// 	if (ret != NEXT_SIZE)
+		// 	{
+		// 		printf("Writing the metadata has failed.\n");
+		// 		close(fd);
+		// 		return -1;
+		// 	}
 
-			metadata = set_invalid(metadata);
+		// 	metadata = set_invalid(metadata);
 
-			ret = write(fd, &metadata, MD_SIZE - NEXT_SIZE);
-			printf("Metadata: %x\n", metadata);
-			if (ret != MD_SIZE - NEXT_SIZE)
-			{
-				printf("Writing the metadata has failed.\n");
-				close(fd);
-				return -1;
-			}
+		// 	ret = write(fd, &metadata, MD_SIZE - NEXT_SIZE);
+		// 	AUDIT printf("Metadata: %x\n", metadata);
+		// 	if (ret != MD_SIZE - NEXT_SIZE)
+		// 	{
+		// 		printf("Writing the metadata has failed.\n");
+		// 		close(fd);
+		// 		return -1;
+		// 	}
 	
-			nbytes = 0;
-			printf("File block at %d written succesfully.\n", get_offset(i));
-		}
+		// 	nbytes = 0;
+		// 	AUDIT printf("File block at %d written succesfully.\n", get_offset(i));
+		// }
 
 		nbytes = BLK_SIZE - nbytes - MD_SIZE;
 		block_padding = malloc(nbytes);
@@ -195,7 +194,7 @@ int main(int argc, char *argv[])
 			close(fd);
 			return -1;
 		}
-		printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(i));
+		AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(i));
 	}
 
 	close(fd);

@@ -437,7 +437,7 @@ struct message *to_insert: Pointer to the message to be inserted
 unsigned int position: Express the position in the double linked list where message should be placed
 Return Value:
 This function does not return anything.*/
-void insert_sorted(struct message ** head, struct message **tail, struct message *to_insert, unsigned int position) {
+void insert_sorted(struct message ** head, struct message **tail, struct message *to_insert, int position) {
 
     struct message* curr;
     to_insert->prev = *tail;
@@ -559,7 +559,7 @@ int *array: A pointer to an integer array.
 int start: An integer representing the start of the sorted array.
 int end: An integer representing the end of the sorted array.
 int *index: A pointer to an integer representing the current position in the array.*/
-void get_balanced_indices(int *array, int start, int end, int *index)
+void get_balanced_indices(int  *array, int start, int end, int *index)
 {
     int mid;
 

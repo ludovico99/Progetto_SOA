@@ -23,8 +23,8 @@ struct blk_element
     struct blk_element *left;
     struct message * msg;
     uint16_t metadata;
-    unsigned int index;
-    unsigned int position;
+    int index;
+    int position;
 };
 /*This struct contains a pointer to a blk_element and pointers to the next and previous messages in the list.*/
 struct message
@@ -38,15 +38,14 @@ struct message
 */
 struct current_message {
     int index;
-    struct blk_element * curr;
+    struct message * curr;
     loff_t offset;
-    unsigned long my_epoch;
 };
 
 /*This struct represents the memory representation of a block in the device. It contains metadata (uint16_t), the position in the valid message double linked list (pos) and data (char array).*/
 struct dev_blk
 {   
-    unsigned int pos;
+    int pos;
     uint16_t metadata;
     char data[SIZE];
 };
