@@ -110,16 +110,15 @@ int main(int argc, char *argv[])
 	// write file datablocks
 	for (i = 0; i < nblocks; i++)
 	{ 	metadata = 0;
-		int index = i % NTESTI;
 		if (MD_SIZE > BLK_SIZE)
 		{
 				printf("The block is too small");
 				return -1;
 		}
 
-		// if (i < NTESTI)
-		// {
-			if (MD_SIZE + strlen(testo[index]) > BLK_SIZE)
+		if (i < NTESTI)
+		{
+			if (MD_SIZE + strlen(testo[i]) > BLK_SIZE)
 			{
 				printf("The block is too small");
 				return -1;
@@ -135,7 +134,7 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 
-			metadata = set_length(metadata, strlen(testo[index]));
+			metadata = set_length(metadata, strlen(testo[i]));
 			metadata = set_valid(metadata);
 
 			ret = write(fd, &metadata, MD_SIZE - NEXT_SIZE);
@@ -147,8 +146,8 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 
-			nbytes = strlen(testo[index]);
-			ret = write(fd, testo[index], nbytes);
+			nbytes = strlen(testo[i]);
+			ret = write(fd, testo[i], nbytes);
 			if (ret != nbytes)
 			{
 				printf("Writing file datablock has failed.\n");
@@ -156,33 +155,33 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 			AUDIT printf("File block at %d written succesfully.\n", get_offset(i));
-		//}
-		// else
-		// {	
+		}
+		else
+		{	
 			
-		// 	ret = write(fd, &invalid, NEXT_SIZE);
-		// 	AUDIT printf("Message is at position:  %d\n", invalid);
-		// 	if (ret != NEXT_SIZE)
-		// 	{
-		// 		printf("Writing the metadata has failed.\n");
-		// 		close(fd);
-		// 		return -1;
-		// 	}
+			ret = write(fd, &invalid, NEXT_SIZE);
+			AUDIT printf("Message is at position:  %d\n", invalid);
+			if (ret != NEXT_SIZE)
+			{
+				printf("Writing the metadata has failed.\n");
+				close(fd);
+				return -1;
+			}
 
-		// 	metadata = set_invalid(metadata);
+			metadata = set_invalid(metadata);
 
-		// 	ret = write(fd, &metadata, MD_SIZE - NEXT_SIZE);
-		// 	AUDIT printf("Metadata: %x\n", metadata);
-		// 	if (ret != MD_SIZE - NEXT_SIZE)
-		// 	{
-		// 		printf("Writing the metadata has failed.\n");
-		// 		close(fd);
-		// 		return -1;
-		// 	}
+			ret = write(fd, &metadata, MD_SIZE - NEXT_SIZE);
+			AUDIT printf("Metadata: %x\n", metadata);
+			if (ret != MD_SIZE - NEXT_SIZE)
+			{
+				printf("Writing the metadata has failed.\n");
+				close(fd);
+				return -1;
+			}
 	
-		// 	nbytes = 0;
-		// 	AUDIT printf("File block at %d written succesfully.\n", get_offset(i));
-		// }
+			nbytes = 0;
+			AUDIT printf("File block at %d written succesfully.\n", get_offset(i));
+		}
 
 		nbytes = BLK_SIZE - nbytes - MD_SIZE;
 		block_padding = malloc(nbytes);
