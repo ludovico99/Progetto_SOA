@@ -17,5 +17,6 @@ extern void insert_sorted(struct message **, struct message **,struct message *,
 extern void free_list(struct message*);
 extern void delete(struct message**,struct message **, struct message*);
 extern void stampa_lista(struct message *);
+struct message *search(struct message *head, int pos) ;
 
 #endif

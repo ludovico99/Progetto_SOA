@@ -17,6 +17,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 #endif
     struct blk_element *the_block = NULL;
     struct message **the_head = NULL;
+    struct message *temp = NULL;
     struct message **the_tail = NULL;
     struct message *the_message = NULL;
     struct dev_blk *the_dev_blk;
@@ -107,31 +108,38 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     /*NOT EXPLOITED (get_free is always 0, false): If the block already contains a message, assigns its reference to the_message variable.
     if (get_validity(the_block->metadata) && get_free(the_block->metadata) the_message = the_block->msg;*/
 
-    // Assigns the reference to the_block structure to the elem field of the_message variable and
-    the_message->elem = the_block; // don't need locked operation since the new message isn't available to readers (if it's not valid and free)
-    the_message->prev = *the_tail; // don't need locked operation since the new message isn't available to readers (if it's not valid and free)
-    the_block->msg = the_message;  // Assigns the reference to the_message variable to the msg field of the_block structure.
+    // don't need locked operation since the new message isn't available to readers
+    the_message->elem = the_block; 
+    the_message->prev = *the_tail; 
+    the_block->msg = the_message;  // Assigns the reference to the_message variable to the msg field of the_block structure.-
 
-    the_block->metadata = the_metadata;
+    the_block->metadata = the_metadata; //Linearization point for the readers(sys_get_data)
     asm volatile("mfence");
 
     if (*the_tail == NULL)
     {
         // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
-
         AUDIT printk("%s: List is empty", MOD_NAME);
-        *the_head = the_message;
-        asm volatile("mfence");
+        
+        the_message -> position = 0;
+
         *the_tail = the_message;
+
+        *the_head = the_message; //Linearization point for the readers (dev_read)
         asm volatile("mfence");
+
         goto insert_completed;
     }
     // Otherwise, appends the_message variable at the end of the sh_data list.
-    (*the_tail)->next = the_message;
-    asm volatile("mfence");
-    *the_tail = the_message;
-    asm volatile("mfence");
 
+    the_message -> position = (*the_tail)->position++;
+
+    temp = *the_tail;
+    *the_tail = the_message;
+
+    temp ->next = the_message; //Linearization point for the readers (dev_read)
+    asm volatile("mfence");
+    
 insert_completed:
     // Releases the write lock of the sh_data structure.
     spin_unlock(&(sh_data.write_lock));
@@ -297,7 +305,6 @@ asmlinkage long sys_invalidate_data(int offset)
 #endif
 
     struct buffer_head *bh;
-    uint16_t the_metadata;
     struct message *the_message;
     struct blk_element *the_block = NULL;
     struct dev_blk *blk = NULL;
@@ -342,13 +349,14 @@ asmlinkage long sys_invalidate_data(int offset)
         ret = -ENODATA;
         goto exit;
     }
+
     AUDIT printk("%s: Deleting the message from valid messages list...", MOD_NAME);
 
     the_message = the_block->msg;
     delete (&sh_data.first, &sh_data.last, the_message);
 
-    the_block->metadata = the_metadata;
-    asm volatile("mfence"); // make it visible to readers
+    the_block->metadata = set_invalid(the_block->metadata); //Linearization point for the readers (dev_read)
+    asm volatile("mfence");
 
     //  move to a new epoch - still under write lock
     updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
@@ -388,8 +396,7 @@ asmlinkage long sys_invalidate_data(int offset)
 
     if (blk != NULL)
     {
-        the_metadata = set_invalid(the_block->metadata);
-        memcpy(&(blk->metadata), &the_metadata, MD_SIZE - NEXT_SIZE);
+        memcpy(&(blk->metadata), &the_block->metadata, MD_SIZE - NEXT_SIZE);
 
         blk->pos = INVALID_POSITION;
 

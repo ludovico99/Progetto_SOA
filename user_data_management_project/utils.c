@@ -273,82 +273,6 @@ struct blk_element *tree_delete(struct blk_element *root, int index)
     return root;
 }
 
-// Iterative: Funzione per eliminare un nodo con un dato index dall'albero binario
-// bool tree_delete_it(struct blk_element **root, int index)
-// {
-//     struct blk_element *curr = *root;
-//     struct blk_element *parent = NULL;
-//     struct blk_element *min_node = NULL;
-//     bool isLeftChild = false;
-
-//     if (curr == NULL)
-//     {
-//         return false;
-//     }
-
-//     while (curr->index != index) {
-//         parent = curr;
-
-//         if (index < curr->index) {
-//             curr = curr->left;
-//             isLeftChild = true;
-//         } else {
-//             curr = curr->right;
-//             isLeftChild = false;
-//         }
-
-//         if (curr == NULL) {
-//             return false;
-//         }
-//     }
-
-//      // caso 1: il nodo da eliminare non ha figli
-//     if (curr->left == NULL && curr->right == NULL) {
-//         if (curr == *root) {
-//             *root = NULL;
-//             asm volatile("mfence");
-//         } else if (isLeftChild) {
-//             parent->left = NULL;
-//             asm volatile("mfence");
-//         } else {
-//             parent->right = NULL;
-//             asm volatile("mfence");
-//         }
-//     }
-//     // caso 2: il nodo da eliminare ha solo un figlio
-//     else if (curr->left == NULL) {
-//         if (curr == *root) {
-//             *root = curr->right;
-//             asm volatile("mfence");
-//         } else if (isLeftChild) {
-//             parent->left = curr->right;
-//             asm volatile("mfence");
-//         } else {
-//             parent->right = curr->right;
-//             asm volatile("mfence");
-//         }
-//     } else if (curr->right == NULL) {
-//         if (curr == *root) {
-//             *root = curr->left;
-//             asm volatile("mfence");
-//         } else if (isLeftChild) {
-//             parent->left = curr->left;
-//             asm volatile("mfence");
-//         } else {
-//             parent->right = curr->left;
-//             asm volatile("mfence");
-//         }
-//     }
-//     // caso 3: il nodo da eliminare ha due figli
-//     else {
-//         min_node = find_min(curr->right);
-//         tree_delete(root, min_node->index);
-//         curr->index = min_node->index;
-//         asm volatile("mfence");
-//     }
-
-//     return true;
-// }
 
 /*This function is used to print the indices stored in each node of a binary tree.
 
@@ -449,7 +373,7 @@ void insert_sorted(struct message ** head, struct message **tail, struct message
     }
     else {
         curr = *head;
-        while (curr != NULL && curr->elem->position < position) {
+        while (curr != NULL && curr->position < position) {
             curr = curr->next;
         }
 
@@ -540,14 +464,14 @@ void delete(struct message **head, struct message **tail, struct message *to_del
 /*This function is used for debugging purposes. It prints the indices stored in each node of a given list.
 
 Parameters:
-struct message *root: A pointer to the root of the linked list.
+struct message *head: A pointer to the head of the linked list.
 */
-void stampa_lista(struct message *root)
+void stampa_lista(struct message *head)
 {
-    while (root != NULL)
+    while (head != NULL)
     {
-        AUDIT printk("%d ", root->elem->index);
-        root = root->next;
+        AUDIT printk("%d ", head->elem->index);
+        head = head->next;
     }
     return;
 }
@@ -580,4 +504,18 @@ void get_balanced_indices(int  *array, int start, int end, int *index)
     get_balanced_indices(array, mid + 1, end, index);
 
     return;
+}
+/*This function searches for a message in a linked list based on the position of the element.
+Parameters:
+struct message*: A pointer to the head of the double linked list.
+int pos: An integer representing the value to be searched*/
+struct message *search(struct message *head, int pos) {
+
+    struct message *curr = head;
+
+    while (curr != NULL && curr->position < pos) {
+        curr = curr->next;
+    }
+
+    return curr;
 }

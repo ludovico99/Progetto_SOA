@@ -21,7 +21,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     uint64_t file_size = the_inode->i_size;
     struct super_block *sb = filp->f_path.dentry->d_inode->i_sb;
     int ret = 0;
-    loff_t offset;
+    loff_t offset;     // within the block
     int block_to_read; // index of the block to be read from device
 
     if (!mount_md.mounted)
@@ -46,44 +46,32 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     }
 
     my_epoch = __sync_fetch_and_add(&(sh_data.epoch), 1);
-
-    offset = my_off % BLK_SIZE; // Residual
-
-    // In the first read i want to read the head of the list
-    if (the_message->index == -1)
+    
+    if (the_message->position == INVALID_POSITION && my_off == 0) // It means that it's the first read of the I/O session and want to read from offset 0. I assume that he wants to read all the data
     {
-        the_block = sh_data.first->elem;
-        if (sh_data.first->elem != NULL) // Consistency check
-            block_to_read = get_offset(sh_data.first->elem->index);
-        else
-        {
-            index = (my_epoch & MASK) ? 1 : 0;
-            __sync_fetch_and_add(&(sh_data.standing[index]), 1);
-            return 0;
-        }
+        the_message->curr = sh_data.first;
+        the_message->position = the_message->curr->position;
+        my_off = (the_message->curr->elem->index) * BLK_SIZE;
     }
-    // Reading the current block
-    else if (offset != 0 && offset < MD_SIZE + str_len)   
+    // Reading the following block in the valid message list (If the writer in the meantime has linearized the invalidation operation)
+    else if (the_message->curr == NULL || the_message->curr->elem == NULL ||  the_message->curr->prev->next != the_message->curr)
     {
-        the_block = the_message->curr -> elem;
+
+        the_message->curr = search(sh_data.first, the_message->position);
+        the_message->position = the_message->curr->position;
+        my_off = (the_message->curr->elem->index) * BLK_SIZE;
+    }
+    // else --> Reading the current block
+    the_block = the_message->curr->elem;
+    if (the_block != NULL) // Consistency check
         // compute the actual index of the the block to be read from device
         block_to_read = my_off / BLK_SIZE + 2; // the value 2 accounts for superblock and file-inode on device
+    else
+    {
+        index = (my_epoch & MASK) ? 1 : 0;
+        __sync_fetch_and_add(&(sh_data.standing[index]), 1);
+        return 0;
     }
-    // Reading the following block in the valid message list
-    else {
-        if (the_message->curr->next == NULL) {
-            index = (my_epoch & MASK) ? 1 : 0;
-            __sync_fetch_and_add(&(sh_data.standing[index]), 1);
-            return 0; // Read operation succesfully concluded
-        }
-        the_block = the_message->curr->next->elem;
-        block_to_read = get_offset(the_block->index);
-        offset = 0;
-    }
-   
-
-    the_message->curr = the_block -> msg;
-    the_message->index = get_index(block_to_read);
 
     if (block_to_read > NBLOCKS + 2)
     { // Consistency check
@@ -108,6 +96,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     if (blk != NULL)
     {
         str_len = get_length(blk->metadata);
+        offset = my_off % BLK_SIZE; // Residual
         AUDIT printk("%s: Block at index %d has message with length %d", MOD_NAME, get_index(block_to_read), str_len);
 
         AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, get_index(block_to_read), offset, str_len - offset);
@@ -120,8 +109,16 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
             len = 0;
 
         ret = copy_to_user(buf, blk->data + offset, len);
-        if (ret == 0) my_off += offset + len;
+        if (ret == 0 && the_message->curr->next == NULL)
+            my_off = file_size; // In this way the next read will end with code 0
 
+        else if (ret == 0) // Computing the next block to read
+        {
+            index = the_message->curr->next->elem->index;
+            my_off = index * BLK_SIZE;
+            the_message->curr = the_message->curr->next;
+            the_message->position = the_message->curr->position;
+        }
         else
             my_off += len - ret;
     }
@@ -129,7 +126,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         my_off += BLK_SIZE;
 
     brelse(bh);
-    
+
     index = (my_epoch & MASK) ? 1 : 0;
     __sync_fetch_and_add(&(sh_data.standing[index]), 1);
 
@@ -191,7 +188,7 @@ static int dev_open(struct inode *inode, struct file *filp)
         return -ENOMEM;
     }
 
-    curr->index = -1;
+    curr->position = INVALID_POSITION;
     filp->private_data = curr;
 
     return 0;

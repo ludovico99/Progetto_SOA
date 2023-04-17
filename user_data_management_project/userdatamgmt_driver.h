@@ -15,16 +15,16 @@ extern long sys_invalidate_data; //This variable contains the pointer to the sys
 // userdatamgmt_driver.c
 extern const struct file_operations dev_fops; //This variable contains the file operation structures for the block device driver.
 
-/*This struct represents an element in a tree that contains the block metadata based on index ordering. Each blk_element contains a message (struct message), metadata (uint16_t) and index (unsigned int).
-*/
+
+/*This struct represents an element in a tree that contains the block metadata. Each blk_element contains a message (struct message), index (int) and info (struct info).*/
 struct blk_element
 {
     struct blk_element *right;
     struct blk_element *left;
     struct message * msg;
-    uint16_t metadata;
     int index;
-    int position;
+    uint16_t metadata;
+
 };
 /*This struct contains a pointer to a blk_element and pointers to the next and previous messages in the list.*/
 struct message
@@ -32,12 +32,13 @@ struct message
     struct blk_element *elem;
     struct message *next;
     struct message *prev;
+    int position;
 
 };
-/*This struct contains the index, blk_element and offset of the current message being processed in the dev_read
+/*This struct contains the position, message and offset of the current message being processed in the dev_read
 */
 struct current_message {
-    int index;
+    int position;
     struct message * curr;
     loff_t offset;
 };

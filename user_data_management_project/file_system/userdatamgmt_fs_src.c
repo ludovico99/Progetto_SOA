@@ -151,6 +151,7 @@ static void userdatafs_kill_superblock(struct super_block *s)
         pos ++;
         curr = curr->next;
     }
+    blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
     /*After all pending threads have finished, it calls kill_block_super() to release resources associated with the superblock.*/
     kill_block_super(s);
 
@@ -247,9 +248,10 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     ret = ERR_PTR(-ENOMEM);
                     goto exit;
                 }
-                blk_elem->metadata = the_block->metadata;
+                
                 blk_elem->index = index;
-                blk_elem->position = the_block->pos;
+                blk_elem->metadata = the_block->metadata;
+                
                 AUDIT printk("%s: Block at offset %d (index %d), at position %d, contains the message = %s\n", MOD_NAME, offset, index, the_block->pos, the_block->data);
                 tree_insert(&sh_data.head, blk_elem);
 
@@ -266,6 +268,9 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     }
                     message->elem = blk_elem;
                     blk_elem->msg = message;
+
+                    message->position = the_block->pos;
+                    //Insertion in the valid messages double linked list
                     insert_sorted(&sh_data.first, &sh_data.last, message, the_block->pos);
                 }
                 
