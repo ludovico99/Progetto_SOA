@@ -70,15 +70,15 @@ void init(struct rcu_data *t)
     {
         t->standing[i] = 0x0;
     }
-    t->head = NULL;
     t->first = NULL;
+    t->last = NULL;
     spin_lock_init(&t->write_lock);
     the_daemon = kthread_create(house_keeper, NULL, name);
 
     if (the_daemon)
     {
         wake_up_process(the_daemon);
-        printk("%s: RCU-tree house-keeper activated\n", MOD_NAME);
+        printk("%s: RCU-double linked list house-keeper activated\n", MOD_NAME);
     }
 
     else
@@ -87,249 +87,6 @@ void init(struct rcu_data *t)
     }
 }
 
-/*ITERATIVE : This function searches for a node with an index matching the given index in the binary search tree pointed to by 'root'.
-
-Parameters:
-struct blk_element *root: A pointer to the root of the binary search tree.
-int index: An integer value representing the index of the node to be searched.
-Return Value:
-Returns a pointer to the node with an index matching the given 'index' value if found in the binary search tree, else returns NULL.
-*/
- struct blk_element *tree_lookup(struct blk_element *root, int index)
- {
-     struct blk_element * curr = root;
-     while (curr != NULL) {
-         if (index == curr->index) {
-             AUDIT printk("%s: lookup operation completed for block with index %d", MOD_NAME, index);
-             return curr;
-         } else if (index < curr->index) {
-             // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
-             curr = curr->left;
-         } else {
-             // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
-             curr = curr->right;
-         }
-     }
-     return NULL;
- }
-
-/*struct blk_element *tree_lookup(struct blk_element *root, int index)
-{
-
-    if (root == NULL)
-    {
-        return NULL;
-    }
-
-    if (index > root->index)
-    {
-        // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
-        return tree_lookup(root->right, index);
-    }
-    else if (index < root->index)
-    {
-        // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
-        return tree_lookup(root->left, index);
-    }
-    else
-    {
-        AUDIT printk("%s: lookup operation completed for block with index %d", MOD_NAME, index);
-        return root;
-    }
-}*/
-
-/*ITERATIVE: This function inserts a new node 'newNode' into the binary search tree pointed to by '**root', while maintaining the order of nodes in the tree.
-
-Parameters:
-struct blk_element **root: Pointer to a pointer to the root of the binary search tree. This is a pointer to the topmost node in the tree.
-struct blk_element *newNode: A pointer to the new node to be inserted into the binary search tree.
-Return Value:
-Returns void because it only modifies the binary search tree.*/
-void tree_insert(struct blk_element **root, struct blk_element *newNode)
-{
-    int index = newNode->index;
-    struct blk_element *curr = *root;
-    struct blk_element *parent = NULL;
-    // AUDIT printk("%s: insert operation started for block at index %d", MOD_NAME, index);
-    if (*root == NULL)
-    {
-        *root = newNode;
-        AUDIT printk("%s: insert operation completed for block with index %d", MOD_NAME, index);
-        return;
-    }
-
-    while (curr != NULL)
-    {
-        parent = curr;
-
-        if (index < curr->index)
-        {
-            // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
-            curr = curr->left;
-        }
-        else
-        {
-            // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
-            curr = curr->right;
-        }
-    }
-
-    if (index < parent->index)
-    {
-        parent->left = newNode;
-    }
-    else
-    {
-        parent->right = newNode;
-    }
-}
-
-// void tree_insert(struct blk_element **root, struct blk_element *newNode)
-// {
-//     int index = newNode->index;
-//     // AUDIT printk("%s: insert operation started for block at index %d", MOD_NAME, index);
-//     if (*root == NULL)
-//     {
-//         *root = newNode;
-//         AUDIT printk("%s: insert operation completed for block with index %d", MOD_NAME, index);
-//         return;
-//     }
-
-//     if (index > (*root)->index)
-//     {
-//         // AUDIT printk("%s: The block with index %d follows the right subtree", MOD_NAME, index);
-//         tree_insert(&((*root)->right), newNode);
-//     }
-//     else if (index < (*root)->index)
-//     {
-//         // AUDIT printk("%s: The block with index %d follows the left subtree", MOD_NAME, index);
-//         tree_insert(&((*root)->left), newNode);
-//     }
-// }
-
-/*This function finds the node with the minimum value in a given subtree, starting from the given 'node'.
-
-Parameters:
-struct blk_element *node: Pointer to the root of the subtree
-Return Value:
-Returns a pointer to the node with the minimum value in the subtree.*/
-static struct blk_element *find_min(struct blk_element *node)
-{
-
-    struct blk_element *curr = node;
-
-    while (curr && curr->left != NULL)
-    {
-        curr = curr->left;
-    }
-    return curr;
-}
-/*This function deletes a node with the given index value from a binary search tree rooted at 'root'.
-
-Parameters:
-struct blk_element *root: Pointer to the root of the binary search tree.
-int index: The index value of the node to be deleted.
-Return Value:
-Returns a pointer to the new root of the binary search tree after deletion (which may be the same as the old root).*/
-struct blk_element *tree_delete(struct blk_element *root, int index)
-{
-    struct blk_element *temp = NULL;
-    struct blk_element *min_node = NULL;
-    if (root == NULL)
-    {
-        return root;
-    }
-    if (index < root->index)
-    {
-        root->left = tree_delete(root->left, index);
-        asm volatile("mfence"); // make it visible to readers
-    }
-    else if (index > root->index)
-    {
-        root->right = tree_delete(root->right, index);
-        asm volatile("mfence"); // make it visible to readers
-    }
-    else
-    {
-        // Node to be deleted has 0 or 1 child
-        if (root->left == NULL)
-        {
-            temp = root->right;
-            // kfree(root);
-            return temp;
-        }
-        else if (root->right == NULL)
-        {
-            temp = root->left;
-            // kfree(root);
-            return temp;
-        }
-        // Node to be deleted has 2 children
-        min_node = find_min(root->right);
-        root->index = min_node->index;
-        root->right = tree_delete(root->right, min_node->index);
-        asm volatile("mfence"); // make it visible to readers
-    }
-    return root;
-}
-
-
-/*This function is used to print the indices stored in each node of a binary tree.
-
-Parameters:
-struct blk_element *root: A pointer to the root of the binary tree.*/
-void stampa_albero(struct blk_element *root)
-{
-    if (root != NULL)
-    {
-        stampa_albero(root->left);
-        AUDIT printk("%d", root->index);
-        stampa_albero(root->right);
-    }
-}
-
-/*This function takes a pointer to the root node of a binary tree containing blk_elements and returns a pointer to the first element encountered in an in-order traversal of the tree that is either invalid or is valid and free.
-
-Parameters:
-struct blk_element *root: Pointer to the root node of the binary tree
-Return Value:
-Returns a pointer to the first blk_element encountered in an in-order traversal of the binary tree that meets the specified conditions (invalid or valid and free)*/
-struct blk_element *inorderTraversal(struct blk_element *root)
-{
-    struct blk_element *left_node = NULL;
-    if (root == NULL)
-    {
-        return NULL;
-    }
-    // Return a block that is invalid or is valid and free (NOT EXPLOITED)
-    if (!get_validity(root->metadata) || (get_validity(root->metadata) && get_free(root->metadata)))
-        return root;
-
-    left_node = inorderTraversal(root->left);
-    if (left_node != NULL)
-    {
-        return left_node;
-    }
-    return inorderTraversal(root->right);
-}
-/*This function takes a pointer to the root node of a binary tree containing blk_elements and frees all the memory allocated for the nodes in the tree.
-
-Parameters:
-struct blk_element *root: Pointer to the root node of the binary tree
-Return Value:
-This function does not return anything.*/
-void free_tree(struct blk_element *root)
-{
-    if (root == NULL)
-    {
-        return;
-    }
-
-    free_tree(root->left);
-    free_tree(root->right);
-
-    kfree(root);
-}
 /*This function inserts a new node at the end of a doubly-linked list.
 
 Parameters:
@@ -470,41 +227,12 @@ void stampa_lista(struct message *head)
 {
     while (head != NULL)
     {
-        AUDIT printk("%d ", head->elem->index);
+        AUDIT printk("%d ", head->index);
         head = head->next;
     }
     return;
 }
 
-/*This function recursively constructs an array of balanced indices from a sorted array.
-
-Parameters:
-int *array: A pointer to an integer array.
-int start: An integer representing the start of the sorted array.
-int end: An integer representing the end of the sorted array.
-int *index: A pointer to an integer representing the current position in the array.*/
-void get_balanced_indices(int  *array, int start, int end, int *index)
-{
-    int mid;
-
-    if (start > end)
-    {
-        return;
-    }
-
-    mid = (start + end) / 2;
-
-    // Aggiungere l'indice di mezzo all'array di indici
-    array[*index] = mid;
-    (*index)++;
-    // Ricorsivamente costruire il sottoarray sinistro dell'array di indici
-    get_balanced_indices(array, start, mid - 1, index);
-
-    // Ricorsivamente costruire il sottoarray destro dell'array di indici
-    get_balanced_indices(array, mid + 1, end, index);
-
-    return;
-}
 /*This function searches for a message in a linked list based on the position of the element.
 Parameters:
 struct message*: A pointer to the head of the double linked list.
@@ -514,6 +242,21 @@ struct message *search(struct message *head, int pos) {
     struct message *curr = head;
 
     while (curr != NULL && curr->position < pos) {
+        curr = curr->next;
+    }
+
+    return curr;
+}
+
+/*This function searches for a message in a linked list based on the index of the element.
+Parameters:
+struct message*: A pointer to the head of the double linked list.
+int index: An integer representing the index in the device driver to be searched*/
+struct message *lookup(struct message *head, int index) {
+
+    struct message *curr = head;
+
+    while (curr != NULL && curr->index != index) {
         curr = curr->next;
     }
 

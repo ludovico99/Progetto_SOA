@@ -15,28 +15,27 @@ extern long sys_invalidate_data; //This variable contains the pointer to the sys
 // userdatamgmt_driver.c
 extern const struct file_operations dev_fops; //This variable contains the file operation structures for the block device driver.
 
+extern struct blk_element **head;  //Pointer to the shared data structure that contains block metadata
 
-/*This struct represents an element in a tree that contains the block metadata. Each blk_element contains a message (struct message), index (int) and info (struct info).*/
+/*This struct represents an element in an array that contains the block metadata.*/
 struct blk_element
 {
-    struct blk_element *right;
-    struct blk_element *left;
     struct message * msg;
-    int index;
     uint16_t metadata;
 
 };
-/*This struct contains a pointer to a blk_element and pointers to the next and previous messages in the list.*/
+/*This struct contains a pointer to a blk_element, pointers to the next and previous messages in the list, 
+the index in the block device and the position in the list of valid messages.*/
 struct message
 {   
     struct blk_element *elem;
     struct message *next;
     struct message *prev;
+    int index;
     int position;
 
 };
-/*This struct contains the position, message and offset of the current message being processed in the dev_read
-*/
+/*This struct contains the position, message and offset of the current message being processed in the dev_read*/
 struct current_message {
     int position;
     struct message * curr;
@@ -70,7 +69,6 @@ struct mount_metadata
 All of these variables are used to implement RCU approach.*/
 struct rcu_data
 {   
-    struct blk_element *head;                                   // pointer to the shared data structure that contains block metadata based on index ordering
     struct message *first;                                     // pointer to the shared data structure that represent a list that is ordered following the message insertion 
     struct message *last; 
     unsigned long standing[EPOCHS] __attribute__((aligned(64))); // In memory alignment to reduce CC transactions

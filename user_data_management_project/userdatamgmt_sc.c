@@ -25,7 +25,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     char *destination;
     uint16_t the_metadata = 0;
     unsigned long residual_bytes = -1;
-    int ret = 0;
+    int ret = 0, i;
 
     // Atomically adds 1 to bdev_md.count variable and returns the new value.
     __sync_fetch_and_add(&(bdev_md.count), 1);
@@ -37,7 +37,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         // Set the ret variable to -19 (error code for no such device).
         ret = -ENODEV;
         // Jumps to the exit label
-        goto exit;
+        goto exit_2;
     }
     // If the size variable is greater than the SIZE constant, set its value to SIZE.
     if (size > SIZE)
@@ -46,7 +46,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     {
         // Set the ret variable to -22 (error code for invalid argument).
         ret = -EINVAL;
-        goto exit;
+        goto exit_2;
     }
 
     // Locally computing the newest metadata mask
@@ -61,7 +61,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         printk("%s: Kzalloc has failed\n", MOD_NAME);
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
-        goto exit;
+        goto exit_2;
     }
     // Copies data from user space to kernel space, starting at the address of the destination array plus the size of the metadata and with a maximum size equal to size. The number of bytes that could not be copied is stored in the residual_bytes variable.
     residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
@@ -76,7 +76,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         printk("%s: Kzalloc has failed\n", MOD_NAME);
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
-        goto exit_2;
+        goto exit_3;
     }
 
     // Acquires the write lock of the sh_data structure.
@@ -86,8 +86,16 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     the_head = &sh_data.first;
     the_tail = &sh_data.last;
 
-    // Traverses the binary tree starting from sh_data.head and returns the first empty block encountered.
-    the_block = inorderTraversal(sh_data.head);
+    // Traverses the array starting from the first element and returns the first empty block encountered.
+    for (i = 0; i <nblocks; i++){
+        
+        if (!get_validity(head[i]->metadata)){ //Finding the first invalid block into the array of metadata
+            the_block = head[i];
+            // Computes the offset value starting from the index value of the_block structure and assigns it to the ret variable.
+            ret = get_offset(i);
+            break;
+        }
+    }
 
     if (the_block == NULL)
     {
@@ -96,64 +104,24 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         spin_unlock(&(sh_data.write_lock));
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
-        goto exit_2;
+        goto exit;
     }
 
-    // Computes the offset value starting from the index value of the_block structure and assigns it to the ret variable.
-    ret = get_offset(the_block->index);
-
-    AUDIT printk("%s: Old metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_block->metadata);
-    AUDIT printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
-
-    /*NOT EXPLOITED (get_free is always 0, false): If the block already contains a message, assigns its reference to the_message variable.
-    if (get_validity(the_block->metadata) && get_free(the_block->metadata) the_message = the_block->msg;*/
-
-    // don't need locked operation since the new message isn't available to readers
-    the_message->elem = the_block; 
-    the_message->prev = *the_tail; 
-    the_block->msg = the_message;  // Assigns the reference to the_message variable to the msg field of the_block structure.-
-
-    the_block->metadata = the_metadata; //Linearization point for the readers(sys_get_data)
-    asm volatile("mfence");
-
-    if (*the_tail == NULL)
+    AUDIT
     {
-        // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
-        AUDIT printk("%s: List is empty", MOD_NAME);
-        
-        the_message -> position = 0;
-
-        *the_tail = the_message;
-
-        *the_head = the_message; //Linearization point for the readers (dev_read)
-        asm volatile("mfence");
-
-        goto insert_completed;
+        printk("%s: Old metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_block->metadata);
+        printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
     }
-    // Otherwise, appends the_message variable at the end of the sh_data list.
-
-    the_message -> position = (*the_tail)->position++;
-
-    temp = *the_tail;
-    *the_tail = the_message;
-
-    temp ->next = the_message; //Linearization point for the readers (dev_read)
-    asm volatile("mfence");
-    
-insert_completed:
-    // Releases the write lock of the sh_data structure.
-    spin_unlock(&(sh_data.write_lock));
-
-    AUDIT printk("%s: Flushing changes into the device", MOD_NAME);
     // Reads a block from the device starting at the offset indicated by the ret variable.
+    printk("%s: Flushing changes into the device", MOD_NAME);
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, ret);
     if (!bh)
     {
         printk("%s: Error in retrieving the block at offset %d ", MOD_NAME, ret);
         // Set the ret variable to -5 (error code for I/O error)
         ret = -EIO;
-        // Jumps to the exit_2 label.
-        goto exit_2;
+        // Jumps to the exit label.
+        goto exit;
     }
     the_dev_blk = (struct dev_blk *)bh->b_data;
 
@@ -175,16 +143,51 @@ insert_completed:
         else
             printk("%s: Synchronous flush not succeded", MOD_NAME);
 #endif
+        // Releases the buffer_head structure.
+        brelse(bh);
+        //If the device driver update is properly set, the RCU structure update can start 
+
+        // Don't need locked / synchronizing operation since the new message isn't available to readers
+        the_message->elem = the_block;
+        the_message->prev = *the_tail;
+        the_block->msg = the_message; // Assigns the reference to the_message variable to the msg field of the_block structure.-
+
+        the_block->metadata = the_metadata; // Don't need locked / synchronizing operation since no readers have to traverse the array of metadata
+
+        if (*the_tail == NULL)
+        {
+            // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
+            AUDIT printk("%s: List is empty", MOD_NAME);
+
+            the_message->position = 0;
+
+            *the_tail = the_message;
+
+            *the_head = the_message; // Linearization point for the readers
+            asm volatile("mfence");
+
+            goto exit;
+        }
+
+        // Otherwise, appends the_message variable at the end of the sh_data list.
+        the_message->position = (*the_tail)->position++;
+
+        temp = *the_tail;
+        *the_tail = the_message;
+
+        temp->next = the_message; // Linearization point for the readers 
+        asm volatile("mfence");
     }
-    // Releases the buffer_head structure.
-    brelse(bh);
-exit_2:
-    // Frees the memory allocated with kzalloc
-    kfree(destination);
+
 exit:
+    // Releases the write lock of the sh_data structure.
+    spin_unlock(&(sh_data.write_lock));
+    // Frees the memory allocated with kzalloc
+exit_2:
+    kfree(destination);
+exit_3:
     // Atomically subtracts 1 from the bdev_md.count variable and returns the new value.
     __sync_fetch_and_sub(&(bdev_md.count), 1);
-    // Returns the value of the ret variable.
     return ret;
 }
 
@@ -209,9 +212,9 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 #endif
     unsigned long *epoch;
     unsigned long my_epoch;
-    struct blk_element *the_block;
-    struct buffer_head *bh;
-    struct dev_blk *dev_blk;
+    struct message * the_message = NULL;
+    struct buffer_head *bh = NULL;
+    struct dev_blk *dev_blk = NULL;
     ssize_t msg_len = -1;
     int len = 0;
     int ret = -1;
@@ -228,29 +231,20 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 
     if (size > SIZE)
         size = SIZE;
-    if (size < 0 || offset > NBLOCKS - 1 || offset < 0)
+    if (size < 0 || offset > nblocks - 1 || offset < 0)
         return -EINVAL;
 
     epoch = &sh_data.epoch;
     my_epoch = __sync_fetch_and_add(epoch, 1);
 
-    the_block = tree_lookup(sh_data.head, offset);
-
-    if (the_block == NULL)
+    //Searching the message with the specified offset in the valid messages list 
+    the_message = lookup(sh_data.first, offset);
+    if (the_message == NULL)
     {
-        ret = -EINVAL;
+        ret = -ENODATA;
         goto exit;
     }
-
-    msg_len = get_length(the_block->metadata);
-    if (size > msg_len)
-        size = msg_len;
-    if (!get_validity(the_block->metadata))
-    {
-        ret = 0;
-        goto exit;
-    }
-
+  
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, get_offset(offset));
     if (!bh)
     {
@@ -261,10 +255,15 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     dev_blk = (struct dev_blk *)bh->b_data;
 
     if (dev_blk != NULL)
-    {
+    {   
+         
+        msg_len = get_length(dev_blk->metadata);
+        if (size > msg_len)
+            size = msg_len;
+
         while (ret != 0)
         {
-            AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, get_offset(the_block->index), off, msg_len - off);
+            AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, get_offset(offset), off, msg_len - off);
             if (off == 0)
                 len = msg_len;
             else if (offset < MD_SIZE + msg_len)
@@ -281,7 +280,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 exit:
     index = (my_epoch & MASK) ? 1 : 0;
     __sync_fetch_and_add(&(sh_data.standing[index]), 1);
-    __sync_fetch_and_sub(&(bdev_md.count), 1);
+    __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
     return ret;
 }
 
@@ -304,15 +303,16 @@ asmlinkage long sys_invalidate_data(int offset)
 {
 #endif
 
-    struct buffer_head *bh;
-    struct message *the_message;
+    struct buffer_head *bh = NULL;
+    struct message *the_message = NULL;
     struct blk_element *the_block = NULL;
     struct dev_blk *blk = NULL;
+    uint16_t the_metadata;
     unsigned long last_epoch;
     unsigned long updated_epoch;
     unsigned long grace_period_threads;
     int index;
-    int ret = 1;
+    int ret = -1;
     // wait_queue_head_t invalidate_queue;
     DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
 
@@ -326,62 +326,30 @@ asmlinkage long sys_invalidate_data(int offset)
         goto exit;
     }
 
-    if (offset > NBLOCKS - 1 || offset < 0)
+    if (offset > nblocks - 1 || offset < 0)
     {
         ret = -EINVAL;
         goto exit;
     }
-
+    
+    //Acquiring the lock to avoid writers concurrency ...
     spin_lock(&(sh_data.write_lock));
 
-    AUDIT printk("%s: Traverse the tree to find block at index %d", MOD_NAME, offset);
-
-    the_block = tree_lookup(sh_data.head, offset);
-    if (the_block == NULL)
-    { // Consistency check: The shared structure should contains all block in the device
+    AUDIT printk("%s: Accessing metadata for the block at index %d", MOD_NAME, offset);
+    //Accessing to the block's metadata with offset as index
+    the_block = head[offset];
+    if (the_block == NULL) // Consistency check: The array should contains all block in the device
+    { 
         spin_unlock(&(sh_data.write_lock));
         ret = -ENODATA;
         goto exit;
     }
-    if (!get_validity(the_block->metadata))
+    if (!get_validity(the_block->metadata)) //The block with the specified offset has been already invalidated
     {
         spin_unlock(&(sh_data.write_lock));
         ret = -ENODATA;
         goto exit;
     }
-
-    AUDIT printk("%s: Deleting the message from valid messages list...", MOD_NAME);
-
-    the_message = the_block->msg;
-    delete (&sh_data.first, &sh_data.last, the_message);
-
-    the_block->metadata = set_invalid(the_block->metadata); //Linearization point for the readers (dev_read)
-    asm volatile("mfence");
-
-    //  move to a new epoch - still under write lock
-    updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
-
-    sh_data.next_epoch_index += 1;
-    sh_data.next_epoch_index %= 2;
-
-    last_epoch = __atomic_exchange_n(&(sh_data.epoch), updated_epoch, __ATOMIC_SEQ_CST);
-    index = (last_epoch & MASK) ? 1 : 0;
-    grace_period_threads = last_epoch & (~MASK);
-
-    AUDIT printk("%s: Invalidation: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
-
-    wait_event_interruptible(invalidate_queue, sh_data.standing[index] >= grace_period_threads);
-    sh_data.standing[index] = 0;
-
-    // The block has no corrispondence in valid message list
-    the_block->msg = NULL;
-    asm volatile("mfence"); // make it visible to readers
-
-    spin_unlock((&sh_data.write_lock));
-
-    AUDIT printk("%s: Removing invalidated message from valid messages list...\n", MOD_NAME);
-    if (the_message)
-        kfree(the_message);
 
     // FLUSHING METADATA CHANGES INTO THE DEVICE
     printk("%s: Flushing metadata changes into the device", MOD_NAME);
@@ -395,13 +363,15 @@ asmlinkage long sys_invalidate_data(int offset)
     blk = (struct dev_blk *)bh->b_data;
 
     if (blk != NULL)
-    {
-        memcpy(&(blk->metadata), &the_block->metadata, MD_SIZE - NEXT_SIZE);
+    {   
+        the_metadata = set_invalid(the_block->metadata);
+        memcpy(&(blk->metadata), &the_metadata, MD_SIZE - NEXT_SIZE);
 
         blk->pos = INVALID_POSITION;
 
 #ifndef SYNC_FLUSH
         mark_buffer_dirty(bh);
+        
         AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
 #else
         if (sync_dirty_buffer(bh) == 0)
@@ -412,10 +382,43 @@ asmlinkage long sys_invalidate_data(int offset)
             printk("%s: Synchronous flush not succeded", MOD_NAME);
 #endif
         brelse(bh);
+
+        //If the device driver update is properly set, the RCU structure update can start 
+
+        AUDIT printk("%s: Deleting the message from valid messages list...", MOD_NAME);
+
+        the_message = the_block->msg;
+        // Deleting the message from the double linked list ...
+        delete (&sh_data.first, &sh_data.last, the_message);
+
+        the_block->metadata = the_metadata;
+
+        //  move to a new epoch - still under write lock
+        updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
+
+        sh_data.next_epoch_index += 1;
+        sh_data.next_epoch_index %= 2;
+
+        last_epoch = __atomic_exchange_n(&(sh_data.epoch), updated_epoch, __ATOMIC_SEQ_CST);
+        index = (last_epoch & MASK) ? 1 : 0;
+        grace_period_threads = last_epoch & (~MASK);
+
+        AUDIT printk("%s: Invalidation: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
+
+        wait_event_interruptible(invalidate_queue, sh_data.standing[index] >= grace_period_threads);
+        sh_data.standing[index] = 0;
+
+        //Releasing the write lock ...
+        spin_unlock((&sh_data.write_lock));
+
+        AUDIT printk("%s: Removing invalidated message from valid messages list...\n", MOD_NAME);
+        //Finally the grace period endeded and the message can be released ...
+        if (the_message)
+            kfree(the_message);
     }
 exit:
-    __sync_fetch_and_sub(&(bdev_md.count), 1);
-    return ret;
+    __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
+    return 0;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)

@@ -46,22 +46,34 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     }
 
     my_epoch = __sync_fetch_and_add(&(sh_data.epoch), 1);
-    
+
+    if (my_off % BLK_SIZE != 0) {//It means that he wants to read residual bytes of the same block
+
+        ////The block concurrently has been invalidated...
+        if (the_message->curr == NULL || the_message->curr->elem == NULL ||  the_message->curr->prev->next != the_message->curr) return 0;
+        else goto read_same_block; 
+    } 
+
     if (the_message->position == INVALID_POSITION && my_off == 0) // It means that it's the first read of the I/O session and want to read from offset 0. I assume that he wants to read all the data
     {
         the_message->curr = sh_data.first;
         the_message->position = the_message->curr->position;
-        my_off = (the_message->curr->elem->index) * BLK_SIZE;
+        my_off = (the_message->curr->index) * BLK_SIZE;
     }
     // Reading the following block in the valid message list (If the writer in the meantime has linearized the invalidation operation)
     else if (the_message->curr == NULL || the_message->curr->elem == NULL ||  the_message->curr->prev->next != the_message->curr)
     {
-
+        
+    
         the_message->curr = search(sh_data.first, the_message->position);
+        if (the_message -> curr == NULL) return 0; //The following block in the valid message list is invalid too
         the_message->position = the_message->curr->position;
-        my_off = (the_message->curr->elem->index) * BLK_SIZE;
+        my_off = (the_message->curr->index) * BLK_SIZE;
     }
     // else --> Reading the current block
+
+read_same_block:
+   
     the_block = the_message->curr->elem;
     if (the_block != NULL) // Consistency check
         // compute the actual index of the the block to be read from device
@@ -73,8 +85,8 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         return 0;
     }
 
-    if (block_to_read > NBLOCKS + 2)
-    { // Consistency check
+    if (block_to_read > NBLOCKS + 2) // Consistency check: block_to_read must be less or equal than NBLOCKS + 2
+    { 
         index = (my_epoch & MASK) ? 1 : 0;
         __sync_fetch_and_add(&(sh_data.standing[index]), 1);
         return 0;
@@ -82,6 +94,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
 
     AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
 
+    //Reading the block at offset block_to_read in the device
     bh = (struct buffer_head *)sb_bread(sb, block_to_read);
     if (!bh)
     {
@@ -95,12 +108,13 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
 
     if (blk != NULL)
     {
-        str_len = get_length(blk->metadata);
-        offset = my_off % BLK_SIZE; // Residual
-        AUDIT printk("%s: Block at index %d has message with length %d", MOD_NAME, get_index(block_to_read), str_len);
+        str_len = get_length(blk->metadata); //str_len is initialized to the message length 
+        offset = my_off % BLK_SIZE; // Residual bytes
 
-        AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, get_index(block_to_read), offset, str_len - offset);
-
+        AUDIT {
+            printk("%s: Block at index %d has message with length %d", MOD_NAME, get_index(block_to_read), str_len);
+            printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, get_index(block_to_read), offset, str_len - offset);
+        }
         if (offset == 0)
             len = str_len;
         else if (offset < MD_SIZE + str_len)
@@ -108,18 +122,19 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         else
             len = 0;
 
+        //Copy len bytes of message into the user buffer
         ret = copy_to_user(buf, blk->data + offset, len);
         if (ret == 0 && the_message->curr->next == NULL)
             my_off = file_size; // In this way the next read will end with code 0
 
         else if (ret == 0) // Computing the next block to read
         {
-            index = the_message->curr->next->elem->index;
+            index = the_message->curr->next->index;
             my_off = index * BLK_SIZE;
             the_message->curr = the_message->curr->next;
             the_message->position = the_message->curr->position;
         }
-        else
+        else //Unable to copy to the user len bytes 
             my_off += len - ret;
     }
     else

@@ -40,4 +40,6 @@ extern const struct inode_operations userdatafs_inode_ops;
 // dir.c
 extern const struct file_operations userdatafs_dir_operations;
 
+extern int nblocks;
+
 #endif

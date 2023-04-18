@@ -4,6 +4,10 @@ struct bdev_metadata bdev_md = {0, NULL, NULL};
 struct mount_metadata mount_md = {0, "/"};
 struct rcu_data sh_data;
 
+int nblocks = 0; //Real number of blocks into the device
+
+struct blk_element **head; //It's the array of block's metadata
+
 static struct super_operations my_super_ops = {};
 
 static struct dentry_operations my_dentry_ops = {};
@@ -22,7 +26,7 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     sb->s_magic = MAGIC;
 
     bh = sb_bread(sb, SB_BLOCK_NUMBER);
-    if (!sb)
+    if (!bh)
     {
         return -EIO;
     }
@@ -31,18 +35,20 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     brelse(bh);
 
     bh = sb_bread(sb, USERDATAFS_FILE_INODE_NUMBER);
-    if (!sb)
+    if (!bh)
     {
         return -EIO;
     }
     // check on the number of manageable blocks
     inode_disk = (struct userdatafs_inode *)bh->b_data;
-    if (NBLOCKS < (inode_disk->file_size / BLK_SIZE))
+    nblocks = inode_disk->file_size / BLK_SIZE;
+    if (NBLOCKS < nblocks)
     {
         printk("%s: Too many block to manage", MOD_NAME);
         brelse(bh);
         return -EINVAL;
     }
+   
 
     // check on the expected magic number
     if (magic != sb->s_magic)
@@ -100,6 +106,7 @@ static void userdatafs_kill_superblock(struct super_block *s)
     DECLARE_WAIT_QUEUE_HEAD(unmount_queue); // This variable is a wait queue for threads that are waiting for unmount to complete.
     int mnt = -1;
     int offset = 0;
+    int i = 0;
     unsigned int pos = 0;
     struct buffer_head *bh;
     struct dev_blk *the_block;
@@ -120,8 +127,8 @@ static void userdatafs_kill_superblock(struct super_block *s)
     AUDIT printk("%s: Flushing to the device ordering of user messages ...", MOD_NAME);
 
     while (curr != NULL)
-    {   
-        offset = get_offset(curr->elem->index);
+    {
+        offset = get_offset(curr->index);
 
         bh = (struct buffer_head *)sb_bread((bdev_md.bdev)->bd_super, offset);
         if (!bh)
@@ -148,7 +155,7 @@ static void userdatafs_kill_superblock(struct super_block *s)
             printk("%s: Synchronous flush not succeded", MOD_NAME);
 #endif
         brelse(bh);
-        pos ++;
+        pos++;
         curr = curr->next;
     }
     blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
@@ -156,8 +163,16 @@ static void userdatafs_kill_superblock(struct super_block *s)
     kill_block_super(s);
 
     AUDIT printk("%s: Freeing the struct allocated in the kernel memory", MOD_NAME);
-    /* It then frees the memory allocated for the binary tree and sorted list using the free_tree() and free_list() functions, respectively.*/
-    free_tree(sh_data.head);
+
+    /* It then frees the memory allocated for the array and sorted list using the kfree (or vmalloc) and free_list() functions, respectively.*/
+    for (i = 0; i < nblocks; i++){
+        kfree(head[i]);
+    }
+    //Freeing the head of the array...
+    if (sizeof(struct blk_element *) * nblocks < 128 * 1024) kfree(head);
+    else vfree(head);
+
+    //Freeing the double linked list of valid messages...
     free_list(sh_data.first);
     // Finally, it prints a log message indicating that unmount was successful and returns.
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
@@ -181,110 +196,113 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
 {
     int offset;
     int index;
-    int id = 0;
     struct buffer_head *bh;
     struct dev_blk *the_block;
-    struct blk_element *blk_elem;
     struct message *message;
     struct dentry *ret;
     int i = 0;
     int mnt;
-    int *array = NULL;
 
+    //If the CAS operation is able to change the value 0 to 1, it means that the device driver has not been mounted before
     mnt = __sync_val_compare_and_swap(&mount_md.mounted, 0, 1);
     if (mnt == 1)
     {
         printk("%s: the device driver can support only a single mount point at time\n", MOD_NAME);
         return ERR_PTR(-EBUSY);
     }
-    // calls the mount_bdev() function to mount the specified block device onto the filesystem.
+    //Calls the mount_bdev() function to mount the specified block device onto the filesystem.
     ret = mount_bdev(fs_type, flags, dev_name, data, userdatafs_fill_super);
     if (unlikely(IS_ERR(ret)))
         printk("%s: error mounting userdatafs", MOD_NAME);
     else
-    { // If the mount operation is successful, then it sets the variables used to implement RCU approach and initializes the lock involved.
-
+    { 
+        // If the mount operation is successful, then it sets the variables used to implement RCU approach and initializes the lock involved.
         mount_md.mount_point = mount_pt;
         AUDIT printk("%s: userdatafs is succesfully mounted on from device %s and mount directory %s\n", MOD_NAME, dev_name, mount_md.mount_point);
 
         bdev_md.bdev = blkdev_get_by_path(dev_name, FMODE_READ | FMODE_WRITE, NULL);
         bdev_md.path = dev_name;
-        // Initialization ...
+        // Initialization of the RCU data
         init(&sh_data);
-        // Allocates memory to the 'array' using kzalloc or vmalloc based on the size of 'unsigned int * NBLOCKS'
-        if (sizeof(unsigned int) * NBLOCKS < 128 * 1024)
-            array = kzalloc(sizeof(unsigned int) * NBLOCKS, GFP_KERNEL);
+       
+        // Allocates memory to the 'head' using kzalloc or vmalloc based on the size of 'unsigned int * NBLOCKS'
+        if (sizeof(struct blk_element *) * nblocks < 128 * 1024)
+            head = (struct blk_element **)kzalloc(sizeof(struct blk_element *) * nblocks, GFP_KERNEL);
         else
-            array = vmalloc((sizeof(unsigned int) * NBLOCKS));
+            head= (struct blk_element **)vmalloc(sizeof(struct blk_element *) * nblocks);
 
-        if (!array)
+        if (!head)
         {
-            printk("%s: Error allocationg int array\n", MOD_NAME);
-            return ERR_PTR(-ENOMEM);
+            printk("%s: Error allocationg blk_element array\n", MOD_NAME);
+            blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
+            ret = ERR_PTR(-ENOMEM);
+            goto exit;
         }
-        get_balanced_indices(array, 0, NBLOCKS - 1, &id);
-        // Creating the tree and the "overlayed" list that contains all valid messages
-        for (i = 0; i < NBLOCKS; i++)
+        // Creating the array and the "overlayed" list that contains all valid messages
+        for (i = 0; i < nblocks; i++)
         { /*Loops over all blocks in the block device, reads each block from the block device and checks whether it is a valid message or not by reading its metadata.
-          It then inserts it into a binary tree and sorted list based on its index*/
-            index = array[i];
-            offset = get_offset(index);
+          It then inserts it into an array and sorted list based on its index*/
+
+            offset = get_offset(i);
             bh = (struct buffer_head *)sb_bread((bdev_md.bdev)->bd_super, offset);
             if (!bh)
             {
                 printk("%s: Error retrieving the block at offset %d\n", MOD_NAME, offset);
                 ret = ERR_PTR(-EIO);
+                blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
+                if (sizeof(struct blk_element*) * nblocks < 128 * 1024)
+                    kfree(*head);
+                else
+                    vfree(*head);
                 goto exit;
             }
             the_block = (struct dev_blk *)bh->b_data;
             if (the_block != NULL)
-            {
-                // AUDIT printk("%s: retrieved the block at offset %d (index %d)\n", MOD_NAME, offset, i);
-                blk_elem = (struct blk_element *)kzalloc(sizeof(struct blk_element), GFP_KERNEL);
-                if (!blk_elem)
+            {   
+                //Allocating the struct that represents the metadata (and other stuffs) for the block at offset (i + 2)
+                head[i] = (struct blk_element*) kzalloc(sizeof(struct blk_element), GFP_KERNEL);
+                if (!head)
                 {
                     printk("%s: Error allocationg blk_element struct\n", MOD_NAME);
-                    brelse(bh);
                     ret = ERR_PTR(-ENOMEM);
                     goto exit;
                 }
-                
-                blk_elem->index = index;
-                blk_elem->metadata = the_block->metadata;
-                
-                AUDIT printk("%s: Block at offset %d (index %d), at position %d, contains the message = %s\n", MOD_NAME, offset, index, the_block->pos, the_block->data);
-                tree_insert(&sh_data.head, blk_elem);
 
-                if (get_validity(the_block->metadata))
+                //Link the metadata in position i of the corresponding list
+                head[i]->metadata = the_block->metadata;
+
+                AUDIT printk("%s: Block at offset %d (index %d), at position %d, contains the message = %s\n", MOD_NAME, offset, index, the_block->pos, the_block->data);
+
+                if (get_validity(the_block->metadata)) //The block at position i is valid. it has to be inserted in the double linked list
                 {
                     message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
                     if (!message)
                     {
                         printk("%s: Error allocationg message struct\n", MOD_NAME);
-                        kfree(blk_elem);
+                        blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
+                        if (sizeof(struct blk_element *) * nblocks < 128 * 1024)
+                            kfree(*head);
+                        else
+                            vfree(*head);
                         brelse(bh);
                         ret = ERR_PTR(-ENOMEM);
                         goto exit;
                     }
-                    message->elem = blk_elem;
-                    blk_elem->msg = message;
 
+                    //Initialization of the fields of the message structure
+                    message->elem = head[i];
+                    head[i]->msg = message;
+                    message -> index = i;
                     message->position = the_block->pos;
-                    //Insertion in the valid messages double linked list
+                    
+                    // Insertion in the valid messages double linked list
                     insert_sorted(&sh_data.first, &sh_data.last, message, the_block->pos);
                 }
-                
             }
             brelse(bh);
         }
-        
-        exit:
-            /*After the loop completes or if an error occurs, kfree or vfree is called to free the allocated memory.
-            If any error occurred during the initialization, then it sets the mounted flag to 0.*/
-            if (sizeof(unsigned int) * NBLOCKS < 128 * 1024)
-                kfree(array);
-            else
-                vfree(array);
+
+    exit:
         if (unlikely(IS_ERR(ret)))
             mount_md.mounted = 0;
     }
