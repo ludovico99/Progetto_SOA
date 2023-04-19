@@ -17,6 +17,15 @@ extern const struct file_operations dev_fops; //This variable contains the file 
 
 extern struct blk_element **head;  //Pointer to the shared data structure that contains block metadata
 
+/*This struct represents the memory representation of a block in the device. It contains metadata (uint16_t), the position in the valid message double linked list (pos) and data (char array).*/
+struct dev_blk
+{   
+    char data[SIZE];
+    uint16_t metadata;
+    int pos;
+
+};
+
 /*This struct represents an element in an array that contains the block metadata.*/
 struct blk_element
 {
@@ -35,20 +44,12 @@ struct message
     int position;
 
 };
+
 /*This struct contains the position, message and offset of the current message being processed in the dev_read*/
 struct current_message {
     int position;
     struct message * curr;
     loff_t offset;
-};
-
-/*This struct represents the memory representation of a block in the device. It contains metadata (uint16_t), the position in the valid message double linked list (pos) and data (char array).*/
-struct dev_blk
-{   
-    char data[SIZE];
-    uint16_t metadata;
-    int pos;
-
 };
 
 //This struct contains the count, block_device pointer and path string of the block device.
@@ -63,7 +64,7 @@ struct bdev_metadata
 struct mount_metadata
 {   
     int mounted;
-    char *mount_point; 
+    char *mount_point; //Not exploited
 }__attribute__((aligned(64)));
 
 /*This struct contains the head pointer to blk_element list, first and last pointers to message list, standing (an array of integers representing epochs), epoch (the current epoch), next_epoch_index (the index of the next epoch), and write_lock (a spinlock used to acquire the lock before modifying the shared data structure). 

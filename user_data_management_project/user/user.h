@@ -1,13 +1,16 @@
 #ifndef _USER_H
 #define _USER_H
 
-#define MULTI_THREAD
 #define NUM_THREADS 12
 #define NBLOCKS 20
 #define REQS 10
 
+#ifdef MULTI_THREAD
+
 #define MULTI_OPS -1
 #define SAME_BLOCK_OPS -2
+
+#endif
 
 // For kernel 5.15
 #define PUT_DATA 134

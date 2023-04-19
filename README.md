@@ -1,20 +1,20 @@
 # Advanced Operating Systems (and Systems Security) Final Project - A.Y. 2022/2023
 
 ## Student:
-- Ludovico Zarrelli (ID 0316448)
+- **Ludovico Zarrelli** (ID 0316448)
 
 ## Kernel version:
-Il modulo seguente per il kernel Linux è stato sviluppato sulla versione 5.15.0-67-generic ed è stato testato sulla versione 4.15.0-54-generic.    
-Per semplicità nel repository github è presente anche il modulo per la discovery della system call table e individuazione delle free entries. In questo modo accedendo alla directory root del progetto è possibile eseguire i seguenti comandi per installare il suddetto modulo:
+Il modulo seguente per il kernel Linux è stato sviluppato sulla versione **5.15.0-67-generic** ed è stato testato sulla versione **4.15.0-54-generic**.    
 
-```sh
+> **NOTE:** Per semplicità nel repository github è presente anche il modulo per la discovery della system call table e individuazione delle free entries. In questo modo accedendo alla directory root del progetto è possibile eseguire i seguenti comandi per installare il suddetto modulo:
+
+ ```sh
 sudo make build_the_usctm 
 sudo make install_the_usctm 
 ```
-Essendo che la composizione della system call table è cambiata nelle precedenti versioni del kernel all'interno della cartella /user_data_management_project/user è necessario apportare le seguenti modifiche:     
-
-1. Nel Makefile bisogna inserire i nuovi system call numbers. Per le 2 versioni precedenti è possibile soltanto decommentare e commentare la dichiarazione delle variabili relative alla versione di kernel di interesse.
-2. Fare la stessa cosa anche in user.h, andando a modificare le corrispondenti define.
+> **NOTE:** Essendo che la composizione della system call table è cambiata nelle precedenti versioni del kernel all'interno della cartella /user_data_management_project/user è necessario apportare le seguenti modifiche:     
+>1. Nel Makefile bisogna inserire i nuovi system call numbers. Per le 2 versioni precedenti è possibile soltanto decommentare e commentare la dichiarazione delle variabili relative alla versione di kernel di interesse.
+>2. Fare la stessa cosa anche in user.h, andando a modificare le corrispondenti define.
 
 
 # Indice
@@ -48,9 +48,73 @@ Pe ridurre la dimensione dell' eseguibile ed evitare la ripetizione di #include 
 all' interno del file /user_data_management_project/userdatamgmt.c nel quale viene fatta l'init e la cleanup del modulo (vedere [qui](/user_data_management_project/userdatamgmt.c#L39)).
 
 ## Strutture dati
+Per la realizzazione del device driver sono state introdotte le seguenti strutture dati:
+
+- struct [dev_blk](/user_data_management_project/userdatamgmt_driver.h#L20)  : È la rappresentazione (block layout) in memoria della composizione del blocco di un device. È costituto dai seguenti campi:
+    - char data [SIZE]: array di SIZE (dimensione del blocco - la dimensione dei metadati) caratteri che contiene il messaggio utente e del padding di zeri 
+    - uint16_t metadata: bit mask dei metadati del blocco corrispondente. Il bit più significativo è il validity bit, mentre i 12 bit meno signficativi rappresentano la lunghezza del messaggio utente (2^12 = 4KB, di conseguenza è il minimo numero di bit necessari per rappresentare tutte le possibili lunghezze)
+    - int position: intero che rappresenta la posizione del blocco all'interno della lista (ordinata in base all'ordine di inserimento)doppiamente collegata dei messaggi validi (RCU list)
+
+- struct [message](/user_data_management_project/userdatamgmt_driver.h#L38): rappresenta un elemento nella RCU double-linked list. È costituto dai seguenti campi:
+    - struct blk_element *elem: array di SIZE (dimensione del blocco - la dimensione dei metadati) caratteri che contiene il messaggio utente e del padding di zeri 
+    - struct message *next: puntatore al prossimo elemento, cioè al seguente messaggio valido
+    - struct message *prev: puntatore al precedente elemento, cioè al  messaggio valido che lo ha preceduto
+    - int index: offset all'interno del block device - 2. Non considera il superblocco e l'inode del file
+    - int position come sopra
+
+- struct [blk_element](/user_data_management_project/userdatamgmt_driver.h#L30): rappresenta un elemento nell'array dei metadati.  È costituto dai seguenti campi:
+    - struct message * msg è il puntatore (se esiste) al messaggio corrispondente nella lista RCU 
+    - uint16_t metadata come sopra.
+
+- struct [current_message](/user_data_management_project/userdatamgmt_driver.h#L49): è la struttura dati che mantiene il puntatore al messaggio al quale il lettore è arrivato nella sua sessione di I/0. È costituto dai seguenti campi:
+    - int position: come sopra
+    - struct message * curr: puntatore al messaggio corrente nella sessione di I/O 
+    - loff_t offset: posizione attuale all'interno del file
+
+- struct [rcu_data](/user_data_management_project/userdatamgmt_driver.h#L70) : Contiene tutte le variabili necessarie per implementare l' approccio RCU.
+    - struct message *first: puntatore al primo elemento della lista dei messaggi validi                             
+    - struct message *last: puntatore all' ultimo elemento della lista dei messaggi validi
+    - unsigned long standing[EPOCHS]: array di due unsigned long. I lettori vanno a rilasciare un "token" nell' elemento dell'array, il cui indice  corrisponde all'epoca di loro interesse (epoca di inizio lettura)
+    - unsigned long epoch: lettori dell'epoca corrente. Il bit più significativo è l'indice dell'epoca corrente
+    - int next_epoch_index: indice della prossima epoca                                
+    - spinlock_t write_lock: puntatore allo spinlock in scrittura
+
+
+- struct [bdev_metadata](/user_data_management_project/userdatamgmt_driver.h#L56): contiene le informazioni riguardo allo stato corrente del block device.
+    - unsigned int count: è un contatore che rappresenta il numero di threads che stanno correntemente utilizzando il device driver. È incrementata atomicamente ed è utilizzata per evitare che un thread in concorrenza faccia l'unmount e conseguente kill del superblocco.
+    - struct block_device *bdev: puntatore alla struttura block_device. Viene memorizzata per repererire il puntatore alla struttura generica super_block
+    - const char *path: path name del device (image)
+
+- struct [mount_metadata](/user_data_management_project/userdatamgmt_driver.h#L63): contiene le informazioni sul mounting del singlefile-FS.
+    - int mounted: è una variabile che è settata atomicamente a 1 se il FS è montato e 0 altrimenti
+    - char *mount_point: punto di ancoraggio a partire da /
+
+
 ## Implementazione delle system calls
+
 ## Implementazione delle file_operations supportate dal device driver 
+
 ## Linearizzabilità e RCU
+
 ## Concorrenza
+
 ## Codice Utente
+
 ## Compilazione ed esecuzione
+La fase di compilazione è caratterizzata dai seguenti passi:
+
+1. Posizionarsi nella root directory del progetto ed eseguire i seguenti comandi del Makefile più esterno.
+
+2. Compilazione e insmod del modulo the_usctm:
+    ```sh
+        sudo make build_the_usctm 
+        sudo make install_the_usctm 
+    ```
+
+3. Compilazione, insmod del modulo progetto_soa, creazione del singlefile-FS e mounting di quest'ultimo nella directory con path relativo /mount:
+    ```sh
+        sudo make build_progetto_soa 
+        sudo make install_progetto_soa //Internamente fa insmod, create-fs e mount-fs presenti nel makefile interno a /user_data_management_project
+    ```
+4. All'inteno della directory user è presente codice user per utilizzare il modulo in varie modalità (single thread, multi-threads, operazioni multiple su blocchi diversi e molte operazioni sullo stesso blocco). Nel Makefile è possibile specificare quale modalità utilizzare e anche se generare l'eseguibile nella sua versione single-thread o in quella multi-thread. 
+> **NOTE:** In versioni diverse del kernel potrebbe essere necessario modificare i system call numbers sia nel Makefile che all'interno di /user_data_management_project/user/user.h

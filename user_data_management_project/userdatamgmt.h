@@ -22,7 +22,7 @@
 #define MD_SIZE (sizeof(uint16_t) + POS_SIZE) //This macro defines the size of the metadata (in bytes).
 #define SIZE (BLK_SIZE - MD_SIZE) //This macro defines the maximum size of user data (in bytes).
 //#define SYNC_FLUSH 
-#define NBLOCKS 40 //This macro defines the number of blocks the application will use.
+#define NBLOCKS 40 //This macro defines the number of blocks manageable by the device driver.
 #define PERIOD 10000
 
 #define get_index(offset)   ((offset) - 2) //This macro retrieves the index from an offset value.

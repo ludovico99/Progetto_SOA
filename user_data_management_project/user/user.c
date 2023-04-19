@@ -181,6 +181,7 @@ int main(int argc, char **argv)
         break;
     default:
         AUDIT printf("Syscall number inserted is invalid");
+        ret = 0;
         break;
     }
     if (ret < 0)

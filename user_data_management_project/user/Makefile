@@ -11,29 +11,36 @@ invalidate_data_sys_num = 174
 multi_ops = -1
 same_block_ops = -2
 
-all:
-	gcc user.c -o user -lpthread
+single-thread:
+	gcc user.c -o user -lpthread 
 
-put_data:
-	./user $(put_data_sys_num)
+multi-thread:
+	gcc user.c -o user -lpthread -DMULTI_THREAD
 
-get_data:
-	./user $(get_data_sys_num) 19
-
-invalidate_data:
-	./user $(invalidate_data_sys_num) 0
-
+#Sia single-thread che multi-threads
 puts:
 	./user $(put_data_sys_num)
 
+#Solo single-thread
+get_data:
+	./user $(get_data_sys_num) 19
+
+#Solo single-thread
+invalidate_data:
+	./user $(invalidate_data_sys_num) 0
+
+#Solo multi-threads
 gets:
 	./user $(get_data_sys_num)
 
+#Solo multi-threads
 invalidations:
 	./user $(invalidate_data_sys_num) 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
 
+#Solo multi-threads
 multi-ops:
 	./user $(multi_ops) 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
 
+#Solo multi-threads
 same-block-ops:
 	./user $(same_block_ops) 8	
