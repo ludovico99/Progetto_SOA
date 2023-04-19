@@ -13,6 +13,7 @@
 char **data;
 int num_params = 0;
 
+#ifdef MULTI_THREAD
 void *my_thread(void *index)
 {
 
@@ -141,6 +142,7 @@ void *same_blk(void *index)
     }
     pthread_exit(0);
 }
+#endif
 
 int main(int argc, char **argv)
 {
@@ -180,7 +182,7 @@ int main(int argc, char **argv)
             AUDIT printf("The block at index %d invalidation ended with code %d\n", offset, ret);
         break;
     default:
-        AUDIT printf("Syscall number inserted is invalid");
+        AUDIT printf("Syscall number inserted is invalid\n");
         ret = 0;
         break;
     }
