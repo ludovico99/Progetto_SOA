@@ -1,4 +1,3 @@
-
 /*This function reads data from the device.
 
 Parameters:
@@ -49,7 +48,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
 
     if (my_off % BLK_SIZE != 0) {//It means that he wants to read residual bytes of the same block
 
-        ////The block concurrently has been invalidated...
+        //The block concurrently has been invalidated...
         if (the_message->curr == NULL || the_message->curr->elem == NULL ||  the_message->curr->prev->next != the_message->curr) return 0;
         else goto read_same_block; 
     } 
@@ -117,7 +116,7 @@ read_same_block:
         }
         if (offset == 0)
             len = str_len;
-        else if (offset < MD_SIZE + str_len)
+        else if (offset <  str_len)
             len = str_len - offset;
         else
             len = 0;
@@ -172,6 +171,7 @@ static int dev_release(struct inode *inode, struct file *filp)
     __sync_fetch_and_sub(&(bdev_md.count), 1);
     return 0;
 }
+
 /*This function is called when the device file is opened by a user.
 
 Parameters:

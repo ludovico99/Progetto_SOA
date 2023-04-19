@@ -63,10 +63,10 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         goto fetch_and_sub;
     }
     // Copies data from user space to kernel space, starting at the address of the destination array plus the size of the metadata and with a maximum size equal to size. The number of bytes that could not be copied is stored in the residual_bytes variable.
-    residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
+    residual_bytes = copy_from_user(destination, source, size);
     AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
     // Copies the metadata field of the_block structure to the first MD_SIZE bytes of the destination array.
-    memcpy(destination + POS_SIZE, &the_metadata, MD_SIZE - POS_SIZE);
+    memcpy(destination + SIZE, &the_metadata, MD_SIZE - POS_SIZE);
 
     // Allocates memory for a new message with size equal to the sizeof(struct message) and assigns its reference to the_message variable.
     the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);

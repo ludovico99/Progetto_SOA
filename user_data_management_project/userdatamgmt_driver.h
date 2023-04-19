@@ -45,9 +45,10 @@ struct current_message {
 /*This struct represents the memory representation of a block in the device. It contains metadata (uint16_t), the position in the valid message double linked list (pos) and data (char array).*/
 struct dev_blk
 {   
-    int pos;
-    uint16_t metadata;
     char data[SIZE];
+    uint16_t metadata;
+    int pos;
+
 };
 
 //This struct contains the count, block_device pointer and path string of the block device.

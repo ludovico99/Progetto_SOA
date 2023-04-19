@@ -187,7 +187,6 @@ This argument is the data passed by the user when they call mount().*/
 struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data)
 {
     int offset;
-    int index;
     struct buffer_head *bh;
     struct dev_blk *the_block;
     struct message *message;
@@ -258,7 +257,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                 // Link the metadata in position i of the corresponding list
                 head[i]->metadata = the_block->metadata;
 
-                AUDIT printk("%s: Block at offset %d (index %d), at position %d, contains the message = %s\n", MOD_NAME, offset, index, the_block->pos, the_block->data);
+                AUDIT printk("%s: Block at offset %d (index %d), at position %d, contains the message = %s\n", MOD_NAME, offset, i, the_block->pos, the_block->data);
 
                 if (get_validity(the_block->metadata)) // The block at position i is valid. it has to be inserted in the double linked list
                 {
