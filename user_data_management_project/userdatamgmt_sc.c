@@ -17,7 +17,6 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 #endif
     struct blk_element *the_block = NULL;
     struct message **the_head = NULL;
-    struct message *temp = NULL;
     struct message **the_tail = NULL;
     struct message *the_message = NULL;
     struct dev_blk *the_dev_blk;
@@ -29,7 +28,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 
     // Atomically adds 1 to bdev_md.count variable and returns the new value.
     __sync_fetch_and_add(&(bdev_md.count), 1);
-    printk("%s: SYS_PUT_DATA \n", MOD_NAME);
+    AUDIT printk("%s: SYS_PUT_DATA \n", MOD_NAME);
 
     if (!mount_md.mounted)
     {
@@ -37,7 +36,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         // Set the ret variable to -19 (error code for no such device).
         ret = -ENODEV;
         // Jumps to the exit label
-        goto exit_2;
+        goto fetch_and_sub;
     }
     // If the size variable is greater than the SIZE constant, set its value to SIZE.
     if (size > SIZE)
@@ -46,7 +45,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     {
         // Set the ret variable to -22 (error code for invalid argument).
         ret = -EINVAL;
-        goto exit_2;
+        goto fetch_and_sub;
     }
 
     // Locally computing the newest metadata mask
@@ -61,13 +60,13 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         printk("%s: Kzalloc has failed\n", MOD_NAME);
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
-        goto exit_2;
+        goto fetch_and_sub;
     }
     // Copies data from user space to kernel space, starting at the address of the destination array plus the size of the metadata and with a maximum size equal to size. The number of bytes that could not be copied is stored in the residual_bytes variable.
     residual_bytes = copy_from_user(destination + MD_SIZE, source, size);
     AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
     // Copies the metadata field of the_block structure to the first MD_SIZE bytes of the destination array.
-    memcpy(destination + NEXT_SIZE, &the_metadata, MD_SIZE - NEXT_SIZE);
+    memcpy(destination + POS_SIZE, &the_metadata, MD_SIZE - POS_SIZE);
 
     // Allocates memory for a new message with size equal to the sizeof(struct message) and assigns its reference to the_message variable.
     the_message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
@@ -76,7 +75,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         printk("%s: Kzalloc has failed\n", MOD_NAME);
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
-        goto exit_3;
+        goto free;
     }
 
     // Acquires the write lock of the sh_data structure.
@@ -88,7 +87,8 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 
     // Traverses the array starting from the first element and returns the first empty block encountered.
     for (i = 0; i <nblocks; i++){
-        
+        if (head[i] == NULL) continue; //Consistency check
+
         if (!get_validity(head[i]->metadata)){ //Finding the first invalid block into the array of metadata
             the_block = head[i];
             // Computes the offset value starting from the index value of the_block structure and assigns it to the ret variable.
@@ -100,11 +100,9 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     if (the_block == NULL)
     {
         printk("%s: No blocks available in the device\n", MOD_NAME);
-        // Releases the write lock of the sh_data structure.
-        spin_unlock(&(sh_data.write_lock));
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
-        goto exit;
+        goto all;
     }
 
     AUDIT
@@ -121,7 +119,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         // Set the ret variable to -5 (error code for I/O error)
         ret = -EIO;
         // Jumps to the exit label.
-        goto exit;
+        goto all;
     }
     the_dev_blk = (struct dev_blk *)bh->b_data;
 
@@ -134,7 +132,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         // Sets the dirty bit of the bh structure and marks it as requiring writeback.
         mark_buffer_dirty(bh);
 
-        AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
+        AUDIT printk("%s: Page-cache write-back daemon will eventually flush changes into the device", MOD_NAME);
 #else
         if (sync_dirty_buffer(bh) == 0)
         {
@@ -146,13 +144,16 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         // Releases the buffer_head structure.
         brelse(bh);
         //If the device driver update is properly set, the RCU structure update can start 
-
+        AUDIT printk("%s: Updating the kernel structures ...", MOD_NAME);
         // Don't need locked / synchronizing operation since the new message isn't available to readers
+        the_message ->index = get_index(ret);
         the_message->elem = the_block;
         the_message->prev = *the_tail;
-        the_block->msg = the_message; // Assigns the reference to the_message variable to the msg field of the_block structure.-
+ 
 
-        the_block->metadata = the_metadata; // Don't need locked / synchronizing operation since no readers have to traverse the array of metadata
+        // Don't need locked / synchronizing operation since no readers have to traverse the array of metadata
+        the_block->msg = the_message; // Assigns the reference to the_message variable to the msg field of the_block structure.
+        the_block->metadata = the_metadata; 
 
         if (*the_tail == NULL)
         {
@@ -166,26 +167,26 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
             *the_head = the_message; // Linearization point for the readers
             asm volatile("mfence");
 
-            goto exit;
+            goto all;
         }
 
         // Otherwise, appends the_message variable at the end of the sh_data list.
+        AUDIT printk("%s: Appending the newest message in the double linked list...", MOD_NAME);
         the_message->position = (*the_tail)->position++;
 
-        temp = *the_tail;
         *the_tail = the_message;
 
-        temp->next = the_message; // Linearization point for the readers 
+        the_message->prev->next = the_message; // Linearization point for the readers 
         asm volatile("mfence");
     }
-
-exit:
+all:
     // Releases the write lock of the sh_data structure.
     spin_unlock(&(sh_data.write_lock));
     // Frees the memory allocated with kzalloc
-exit_2:
+free:
     kfree(destination);
-exit_3:
+
+fetch_and_sub:
     // Atomically subtracts 1 from the bdev_md.count variable and returns the new value.
     __sync_fetch_and_sub(&(bdev_md.count), 1);
     return ret;
@@ -222,7 +223,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     loff_t off = 0;
 
     __sync_fetch_and_add(&(bdev_md.count), 1); // The unmount operation is not permitted
-    printk("%s: SYS_GET_DATA \n", MOD_NAME);
+    AUDIT printk("%s: SYS_GET_DATA \n", MOD_NAME);
     if (!mount_md.mounted)
     {
         printk("%s: The device is not mounted", MOD_NAME);
@@ -231,16 +232,20 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 
     if (size > SIZE)
         size = SIZE;
-    if (size < 0 || offset > nblocks - 1 || offset < 0)
+    if (size < 0 || offset > nblocks - 1 || offset < 0){
+        printk("%s: The offset is not valid", MOD_NAME);
         return -EINVAL;
 
+    }
+        
     epoch = &sh_data.epoch;
     my_epoch = __sync_fetch_and_add(epoch, 1);
 
     //Searching the message with the specified offset in the valid messages list 
     the_message = lookup(sh_data.first, offset);
     if (the_message == NULL)
-    {
+    {   
+        printk("%s: The message is invalid", MOD_NAME);
         ret = -ENODATA;
         goto exit;
     }
@@ -312,12 +317,12 @@ asmlinkage long sys_invalidate_data(int offset)
     unsigned long updated_epoch;
     unsigned long grace_period_threads;
     int index;
-    int ret = -1;
+    int ret = 0;
     // wait_queue_head_t invalidate_queue;
     DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
 
     __sync_fetch_and_add(&(bdev_md.count), 1); // The unmount operation is not permitted
-    printk("%s: SYS_INVALIDATE_DATA \n", MOD_NAME);
+    AUDIT printk("%s: SYS_INVALIDATE_DATA \n", MOD_NAME);
 
     if (!mount_md.mounted)
     {
@@ -327,7 +332,8 @@ asmlinkage long sys_invalidate_data(int offset)
     }
 
     if (offset > nblocks - 1 || offset < 0)
-    {
+    {   
+        printk("%s: Offset is invalid", MOD_NAME);
         ret = -EINVAL;
         goto exit;
     }
@@ -339,25 +345,31 @@ asmlinkage long sys_invalidate_data(int offset)
     //Accessing to the block's metadata with offset as index
     the_block = head[offset];
     if (the_block == NULL) // Consistency check: The array should contains all block in the device
-    { 
-        spin_unlock(&(sh_data.write_lock));
+    {   
+        printk("%s: The block with the specified offset has no device matches", MOD_NAME);
         ret = -ENODATA;
+         //Releasing the write lock ...
+        spin_unlock((&sh_data.write_lock));
         goto exit;
     }
     if (!get_validity(the_block->metadata)) //The block with the specified offset has been already invalidated
-    {
-        spin_unlock(&(sh_data.write_lock));
+    {   
+        printk("%s: The block with the specified offset has been already invalidated", MOD_NAME);
         ret = -ENODATA;
+         //Releasing the write lock ...
+        spin_unlock((&sh_data.write_lock));
         goto exit;
     }
 
     // FLUSHING METADATA CHANGES INTO THE DEVICE
-    printk("%s: Flushing metadata changes into the device", MOD_NAME);
+    AUDIT printk("%s: Flushing metadata changes into the device", MOD_NAME);
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, get_offset(offset));
     if (!bh)
     {
-        AUDIT printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
+        printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
         ret = -EIO;
+        //Releasing the write lock ...
+        spin_unlock((&sh_data.write_lock));
         goto exit;
     }
     blk = (struct dev_blk *)bh->b_data;
@@ -365,7 +377,7 @@ asmlinkage long sys_invalidate_data(int offset)
     if (blk != NULL)
     {   
         the_metadata = set_invalid(the_block->metadata);
-        memcpy(&(blk->metadata), &the_metadata, MD_SIZE - NEXT_SIZE);
+        memcpy(&(blk->metadata), &the_metadata, MD_SIZE - POS_SIZE);
 
         blk->pos = INVALID_POSITION;
 
@@ -387,7 +399,10 @@ asmlinkage long sys_invalidate_data(int offset)
 
         AUDIT printk("%s: Deleting the message from valid messages list...", MOD_NAME);
 
+        //Get the pointer to the message linked to the block that has to be invalidated ...
         the_message = the_block->msg;
+        the_block -> msg = NULL;
+
         // Deleting the message from the double linked list ...
         delete (&sh_data.first, &sh_data.last, the_message);
 
@@ -418,7 +433,7 @@ asmlinkage long sys_invalidate_data(int offset)
     }
 exit:
     __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
-    return 0;
+    return ret;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)

@@ -1,12 +1,12 @@
 #For kernel 5.15
-put_data_sys_num = 156
-get_data_sys_num = 174
-invalidate_data_sys_num = 177
+put_data_sys_num = 134
+get_data_sys_num = 156
+invalidate_data_sys_num = 174
 
 #For kernel 4.15
-# put_data_sys_num = 174
-# get_data_sys_num = 177
-# invalidate_data_sys_num = 178
+# put_data_sys_num = 134
+# get_data_sys_num = 174
+# invalidate_data_sys_num = 177
 
 multi_ops = -1
 same_block_ops = -2

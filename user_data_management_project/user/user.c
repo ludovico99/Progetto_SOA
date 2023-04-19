@@ -14,8 +14,8 @@ char **data;
 int num_params = 0;
 
 void *my_thread(void *index)
-{   
-    
+{
+
     int my_id = *(int *)index;
     int my_part = 0;
     char **temp = &data[2];
@@ -30,36 +30,40 @@ void *my_thread(void *index)
 
     arg = strtol(data[1], NULL, 10);
 
+    // 66 % READERS, 33% WRITERS
     if (arg == MULTI_OPS)
-    {   
-        int op = my_id % 3;
-        if (op == 0)
+    {
+        if (my_id <= (NUM_THREADS * 2) / 3)
             arg = GET_DATA;
-        else if (op == 1)
-            arg = INVALIDATE_DATA;
-        else
+        else if (my_id >= (NUM_THREADS * 2) / 3 + NUM_THREADS / 6)
             arg = PUT_DATA;
+        else
+            arg = INVALIDATE_DATA;
     }
 
-    AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
+    //AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
 
     if (arg == PUT_DATA)
     {
         ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
         if (ret >= 0)
-            AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
+            printf("%s written into block at offset %d\n", write_buff, ret);
         else
-            AUDIT printf("The system call %d ended with the following error message: %d\n", arg, ret);
+            printf("The system call %d ended with the following error message: %d\n", arg, ret);
         pthread_exit(0);
     }
 
     my_part = my_id;
-    if (arg == INVALIDATE_DATA) upper_bound = num_params;
-    else upper_bound = NBLOCKS;
+    if (arg == INVALIDATE_DATA)
+        upper_bound = num_params;
+    else
+        upper_bound = NBLOCKS;
     while (my_part < upper_bound)
     {
-        if (arg == INVALIDATE_DATA) offset = atoi(temp[my_part]);
-        else offset = my_part;
+        if (arg == INVALIDATE_DATA)
+            offset = atoi(temp[my_part]);
+        else
+            offset = my_part;
         switch (arg)
         {
 
@@ -72,14 +76,14 @@ void *my_thread(void *index)
         case INVALIDATE_DATA:
             ret = syscall(INVALIDATE_DATA, offset);
             if (ret >= 0)
-                AUDIT printf("The block at index %d invalidation ended with code %d\n", offset, ret);
+                printf("The block at index %d invalidation ended with code %d\n", offset, ret);
             break;
         default:
-            AUDIT printf("Syscall number inserted is invalid");
+            printf("Syscall number inserted is invalid");
             break;
         }
         if (ret < 0)
-            AUDIT printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
+            printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
 
         i += 1;
         my_part = my_id + NUM_THREADS * i;
@@ -100,14 +104,13 @@ void *same_blk(void *index)
 
     offset = strtol(data[2], NULL, 10);
 
-    op = my_id % 3;
-
-    if (op == 0)
+    // 66 % READERS, 33% WRITERS
+    if (my_id <= (NUM_THREADS * 2) / 3)
         arg = GET_DATA;
-    else if (op == 1)
-        arg = INVALIDATE_DATA;
-    else
+    else if (my_id >= (NUM_THREADS * 2) / 3 + NUM_THREADS / 6)
         arg = PUT_DATA;
+    else
+        arg = INVALIDATE_DATA;
 
     for (i = 0; i < REQS; i++)
     {
@@ -116,7 +119,7 @@ void *same_blk(void *index)
         case PUT_DATA:
             ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
             if (ret >= 0)
-                AUDIT printf("%s written into block at offset %d\n", write_buff, ret);
+                printf("%s written into block at offset %d\n", write_buff, ret);
             break;
         case GET_DATA:
             memset(buffer, 0, SIZE);
@@ -127,18 +130,17 @@ void *same_blk(void *index)
         case INVALIDATE_DATA:
             ret = syscall(INVALIDATE_DATA, offset);
             if (ret >= 0)
-                AUDIT printf("The block at index %d invalidation ended with code %d\n", offset, ret);
+                printf("The block at index %d invalidation ended with code %d\n", offset, ret);
             break;
         default:
-            AUDIT printf("Syscall number inserted is invalid");
+            printf("Syscall number inserted is invalid");
             break;
         }
         if (ret < 0)
-            AUDIT printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
+             printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
     }
     pthread_exit(0);
 }
-
 
 int main(int argc, char **argv)
 {

@@ -18,8 +18,8 @@
 #define UNIQUE_FILE_NAME "the-file" //This macro defines a unique file name
 
 #define EPOCHS (2) //This macro defines the number of times an operation can be performed before it has to wait for next epoch.
-#define NEXT_SIZE sizeof(int)
-#define MD_SIZE (sizeof(uint16_t) + NEXT_SIZE) //This macro defines the size of the metadata (in bytes).
+#define POS_SIZE sizeof(int)
+#define MD_SIZE (sizeof(uint16_t) + POS_SIZE) //This macro defines the size of the metadata (in bytes).
 #define SIZE (BLK_SIZE - MD_SIZE) //This macro defines the maximum size of user data (in bytes).
 //#define SYNC_FLUSH 
 #define NBLOCKS 20 //This macro defines the number of blocks the application will use.
@@ -52,4 +52,6 @@ extern struct rcu_data sh_data;
 extern struct bdev_metadata bdev_md;
 extern struct mount_metadata mount_md;
 extern char mount_pt[255];
+
+extern int nblocks;
 #endif

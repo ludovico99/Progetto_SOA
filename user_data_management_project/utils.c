@@ -3,6 +3,7 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/kthread.h>
+#include <linux/vmalloc.h>
 
 #include "userdatamgmt_driver.h"
 
@@ -174,6 +175,25 @@ void free_list(struct message *head)
     }
 }
 
+/*This function frees the memory allocated in the array pointed by the global variable head.
+
+Parameters:
+struct blk_element **head: Pointer to the head of the array
+Return Value:
+This function does not return anything.*/
+void free_array(struct blk_element **head)
+{   int i ;
+    /* It then frees the memory allocated for the array and sorted list using the kfree (or vmalloc) and free_list() functions, respectively.*/
+    for (i = 0; i < nblocks; i++){
+        if (head[i]== NULL) break;
+        kfree(head[i]);
+    }
+
+    //Freeing the head of the array...
+    if (sizeof(struct blk_element *) * nblocks < 128 * 1024) kfree(head);
+    else vfree(head);
+}
+
 /*This function deletes a specific node from a doubly-linked list.
 
 Parameters:
@@ -248,7 +268,7 @@ struct message *search(struct message *head, int pos) {
     return curr;
 }
 
-/*This function searches for a message in a linked list based on the index of the element.
+/*This function searches for a message in a double-linked list based on the index of the element.
 Parameters:
 struct message*: A pointer to the head of the double linked list.
 int index: An integer representing the index in the device driver to be searched*/

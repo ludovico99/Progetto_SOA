@@ -124,10 +124,10 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 			
-			ret = write(fd, &i, NEXT_SIZE);
+			ret = write(fd, &i, POS_SIZE);
 			AUDIT printf("Message is at position:  %d\n", i);
 
-			if (ret != NEXT_SIZE)
+			if (ret != POS_SIZE)
 			{
 				printf("Writing the metadata has failed.\n");
 				close(fd);
@@ -137,9 +137,9 @@ int main(int argc, char *argv[])
 			metadata = set_length(metadata, strlen(testo[i]));
 			metadata = set_valid(metadata);
 
-			ret = write(fd, &metadata, MD_SIZE - NEXT_SIZE);
+			ret = write(fd, &metadata, MD_SIZE - POS_SIZE);
 			AUDIT printf("Metadata: %x\n", metadata);
-			if (ret != MD_SIZE - NEXT_SIZE)
+			if (ret != MD_SIZE - POS_SIZE)
 			{
 				printf("Writing the metadata has failed.\n");
 				close(fd);
@@ -159,9 +159,9 @@ int main(int argc, char *argv[])
 		else
 		{	
 			
-			ret = write(fd, &invalid, NEXT_SIZE);
+			ret = write(fd, &invalid, POS_SIZE);
 			AUDIT printf("Message is at position:  %d\n", invalid);
-			if (ret != NEXT_SIZE)
+			if (ret != POS_SIZE)
 			{
 				printf("Writing the metadata has failed.\n");
 				close(fd);
@@ -170,9 +170,9 @@ int main(int argc, char *argv[])
 
 			metadata = set_invalid(metadata);
 
-			ret = write(fd, &metadata, MD_SIZE - NEXT_SIZE);
+			ret = write(fd, &metadata, MD_SIZE - POS_SIZE);
 			AUDIT printf("Metadata: %x\n", metadata);
-			if (ret != MD_SIZE - NEXT_SIZE)
+			if (ret != MD_SIZE - POS_SIZE)
 			{
 				printf("Writing the metadata has failed.\n");
 				close(fd);

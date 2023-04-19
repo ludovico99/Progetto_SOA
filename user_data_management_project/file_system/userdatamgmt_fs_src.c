@@ -4,9 +4,9 @@ struct bdev_metadata bdev_md = {0, NULL, NULL};
 struct mount_metadata mount_md = {0, "/"};
 struct rcu_data sh_data;
 
-int nblocks = 0; //Real number of blocks into the device
+int nblocks = 0; // Real number of blocks into the device
 
-struct blk_element **head; //It's the array of block's metadata
+struct blk_element **head; // It's the array of block's metadata
 
 static struct super_operations my_super_ops = {};
 
@@ -48,7 +48,6 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
         brelse(bh);
         return -EINVAL;
     }
-   
 
     // check on the expected magic number
     if (magic != sb->s_magic)
@@ -106,7 +105,6 @@ static void userdatafs_kill_superblock(struct super_block *s)
     DECLARE_WAIT_QUEUE_HEAD(unmount_queue); // This variable is a wait queue for threads that are waiting for unmount to complete.
     int mnt = -1;
     int offset = 0;
-    int i = 0;
     unsigned int pos = 0;
     struct buffer_head *bh;
     struct dev_blk *the_block;
@@ -164,15 +162,9 @@ static void userdatafs_kill_superblock(struct super_block *s)
 
     AUDIT printk("%s: Freeing the struct allocated in the kernel memory", MOD_NAME);
 
-    /* It then frees the memory allocated for the array and sorted list using the kfree (or vmalloc) and free_list() functions, respectively.*/
-    for (i = 0; i < nblocks; i++){
-        kfree(head[i]);
-    }
-    //Freeing the head of the array...
-    if (sizeof(struct blk_element *) * nblocks < 128 * 1024) kfree(head);
-    else vfree(head);
+    free_array(head);
 
-    //Freeing the double linked list of valid messages...
+    // Freeing the double linked list of valid messages...
     free_list(sh_data.first);
     // Finally, it prints a log message indicating that unmount was successful and returns.
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
@@ -203,19 +195,19 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
     int i = 0;
     int mnt;
 
-    //If the CAS operation is able to change the value 0 to 1, it means that the device driver has not been mounted before
+    // If the CAS operation is able to change the value 0 to 1, it means that the device driver has not been mounted before
     mnt = __sync_val_compare_and_swap(&mount_md.mounted, 0, 1);
     if (mnt == 1)
     {
         printk("%s: the device driver can support only a single mount point at time\n", MOD_NAME);
         return ERR_PTR(-EBUSY);
     }
-    //Calls the mount_bdev() function to mount the specified block device onto the filesystem.
+    // Calls the mount_bdev() function to mount the specified block device onto the filesystem.
     ret = mount_bdev(fs_type, flags, dev_name, data, userdatafs_fill_super);
     if (unlikely(IS_ERR(ret)))
         printk("%s: error mounting userdatafs", MOD_NAME);
     else
-    { 
+    {
         // If the mount operation is successful, then it sets the variables used to implement RCU approach and initializes the lock involved.
         mount_md.mount_point = mount_pt;
         AUDIT printk("%s: userdatafs is succesfully mounted on from device %s and mount directory %s\n", MOD_NAME, dev_name, mount_md.mount_point);
@@ -224,19 +216,18 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         bdev_md.path = dev_name;
         // Initialization of the RCU data
         init(&sh_data);
-       
+
         // Allocates memory to the 'head' using kzalloc or vmalloc based on the size of 'unsigned int * NBLOCKS'
         if (sizeof(struct blk_element *) * nblocks < 128 * 1024)
             head = (struct blk_element **)kzalloc(sizeof(struct blk_element *) * nblocks, GFP_KERNEL);
         else
-            head= (struct blk_element **)vmalloc(sizeof(struct blk_element *) * nblocks);
+            head = (struct blk_element **)vmalloc(sizeof(struct blk_element *) * nblocks);
 
         if (!head)
         {
             printk("%s: Error allocationg blk_element array\n", MOD_NAME);
-            blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
             ret = ERR_PTR(-ENOMEM);
-            goto exit;
+            goto exit_2;
         }
         // Creating the array and the "overlayed" list that contains all valid messages
         for (i = 0; i < nblocks; i++)
@@ -249,52 +240,43 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
             {
                 printk("%s: Error retrieving the block at offset %d\n", MOD_NAME, offset);
                 ret = ERR_PTR(-EIO);
-                blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
-                if (sizeof(struct blk_element*) * nblocks < 128 * 1024)
-                    kfree(*head);
-                else
-                    vfree(*head);
-                goto exit;
+                goto exit_2;
             }
             the_block = (struct dev_blk *)bh->b_data;
             if (the_block != NULL)
-            {   
-                //Allocating the struct that represents the metadata (and other stuffs) for the block at offset (i + 2)
-                head[i] = (struct blk_element*) kzalloc(sizeof(struct blk_element), GFP_KERNEL);
+            {
+                // Allocating the struct that represents the metadata (and other stuffs) for the block at offset (i + 2)
+                head[i] = (struct blk_element *)kzalloc(sizeof(struct blk_element), GFP_KERNEL);
                 if (!head)
                 {
                     printk("%s: Error allocationg blk_element struct\n", MOD_NAME);
+                    brelse(bh);
                     ret = ERR_PTR(-ENOMEM);
-                    goto exit;
+                    goto exit_2;
                 }
 
-                //Link the metadata in position i of the corresponding list
+                // Link the metadata in position i of the corresponding list
                 head[i]->metadata = the_block->metadata;
 
                 AUDIT printk("%s: Block at offset %d (index %d), at position %d, contains the message = %s\n", MOD_NAME, offset, index, the_block->pos, the_block->data);
 
-                if (get_validity(the_block->metadata)) //The block at position i is valid. it has to be inserted in the double linked list
+                if (get_validity(the_block->metadata)) // The block at position i is valid. it has to be inserted in the double linked list
                 {
                     message = (struct message *)kzalloc(sizeof(struct message), GFP_KERNEL);
                     if (!message)
                     {
                         printk("%s: Error allocationg message struct\n", MOD_NAME);
-                        blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
-                        if (sizeof(struct blk_element *) * nblocks < 128 * 1024)
-                            kfree(*head);
-                        else
-                            vfree(*head);
                         brelse(bh);
                         ret = ERR_PTR(-ENOMEM);
-                        goto exit;
+                        goto exit_2;
                     }
 
-                    //Initialization of the fields of the message structure
+                    // Initialization of the fields of the message structure
                     message->elem = head[i];
                     head[i]->msg = message;
-                    message -> index = i;
+                    message->index = i;
                     message->position = the_block->pos;
-                    
+
                     // Insertion in the valid messages double linked list
                     insert_sorted(&sh_data.first, &sh_data.last, message, the_block->pos);
                 }
@@ -302,13 +284,22 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
             brelse(bh);
         }
 
-    exit:
+    exit_2:
         if (unlikely(IS_ERR(ret)))
-            mount_md.mounted = 0;
+        {
+            free_array(head);
+            blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
+        }
+    }
+
+    if (unlikely(IS_ERR(ret))){
+        mount_md.mounted = 0;
+        asm volatile ("mfence");
     }
     /*Finally, the function returns a pointer to the dentry structure if successful or an error pointer if unsuccessful.*/
     return ret;
 }
+
 
 // file system structure
 static struct file_system_type userdatafs_type = {

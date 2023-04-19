@@ -11,9 +11,10 @@
 5. [Linearizzabilità e RCU](#linearizzabilità-e-RCU)
 6. [Concorrenza](#concorrenza)
 7. [User code](#codice-utente)
+8. [Compilazione](#compilazione-ed-esecuzione)
 
 ## Introduzione 
-Il progetto prevede la realizzazione di un linux device driver che implementa block level maintenance di messaggi utente.
+Il progetto prevede la realizzazione di un linux device driver che implementi block level maintenance di messaggi utente.
 
 ## Strutture dati
 ## Implementazione delle system calls
@@ -21,3 +22,4 @@ Il progetto prevede la realizzazione di un linux device driver che implementa bl
 ## Linearizzabilità e RCU
 ## Concorrenza
 ## Codice Utente
+## Compilazione ed esecuzione
