@@ -20,11 +20,12 @@ sudo make install_the_usctm
 # Indice:
 1. [Introduzione](#introduzione)
 2. [Data structures](#strutture-dati)
-3. [System calls](#implementazione-delle-system-calls)
-4. [File_operations](#implementazione-delle-file_operations-supportate-dal-device-driver)
-5. [Linearizzabilità e RCU](#linearizzabilità-e-RCU)
-6. [User code](#codice-utente)
-7. [Compilazione](#compilazione-ed-esecuzione)
+3. [File system](#file-system)
+4. [System calls](#implementazione-delle-system-calls)
+5. [File_operations](#implementazione-delle-file_operations-supportate-dal-device-driver)
+6. [Linearizzabilità e RCU](#linearizzabilità-e-RCU)
+7. [User code](#codice-utente)
+8. [Compilazione](#compilazione-ed-esecuzione)
 
 ## Introduzione:
 Il progetto prevede la realizzazione di un linux device driver che implementi block level maintenance di messaggi utente. Un blocco del block-device ha taglia 4 KB e mantiene 6 (2 bytes per i metadati e 4 bytes per memorizzare la posizione all'interno della lista doppiamente collegata dei messaggi validi) bytes di dati utente e 4 KB - 6 bytes per i metadati. Si richiede l'implementazione di 3 system calls non nativamente supportate dal VFS:
@@ -37,7 +38,7 @@ e di 3 file operations che driver deve supportare:
 - int [release](/user_data_management_project/userdatamgmt_driver.c#L153)(struct inode*, struct file*)
 - ssize_t [read](/user_data_management_project/userdatamgmt_driver.c#L1) (struct file*, char __user*, size_t, loff_t*)
 
-Il device driver deve essere accessibile come file in un file system che supporti le file_operations precedenti. Di conseguenza, si è deciso di  integrare il progetto con il modulo singlefile-FS (che è l'implementazione di un file system accessibile come fosse un file regolare, attraverso l'utilizzo del loop driver) andando ad associare nell'inode del file (che è l'unico file che il FS è in grado di gestire) il puntatore alla struct file_operations (istanziata [qui](/user_data_management_project/userdatamgmt_driver.c#L212)) contenente i riferimenti alle funzioni di driver implementate (vedere il seguente [link](/user_data_management_project/file_system/file.c#L47)).
+Il device driver deve essere accessibile come file in un file system che supporti le file_operations precedenti. Di conseguenza, si è deciso di  integrare il progetto con il modulo singlefile-FS (che è l'implementazione di un file system accessibile come fosse un file regolare, attraverso l'utilizzo del loop driver) andando ad associare nell'inode del file (che è l'unico file che il FS è in grado di gestire), nella file_operation lookup, il puntatore alla struct file_operations (istanziata [qui](/user_data_management_project/userdatamgmt_driver.c#L212)) contenente i riferimenti alle funzioni di driver implementate (vedere il seguente [link](/user_data_management_project/file_system/file.c#L47)).
 
 Pe ridurre la dimensione dell' eseguibile ed evitare la ripetizione di #include nei vari codici sorgenti si è deciso di includere i sorgenti:
 - /user_data_management_project/userdatamgmt_driver.c
@@ -89,12 +90,69 @@ Per la realizzazione del device driver sono state introdotte le seguenti struttu
     - char *mount_point: punto di ancoraggio a partire da /
 
 ## File system:
+Affinchè il device driver sia accessibile come file in un file system è necessario implementare le funzioni di mount e kill del superblocco (kill_sb). 
+Come già detto in precedenza, il device ha associato un driver, che è associato all'inode del file "the-file" nella file_operation lookup. In questo modo l'accesso, lettura e close sul file "the-file" vengono "mappate" nelle funzioni del device driver implementate, rispettivamente dev_open, dev_read e dev_close. Attrvarso l'utilizzo del -o loop driver ([vedi](/user_data_management_project/Makefile#L30)), il file "the-file" può essere visto come un dispositivo a blocchi. Inoltre, è presente del software ([vedere](/user_data_management_project/file_system/makefs.c)) user per formattare il device. Ovviamente, viene formattato in modo che sia compliant alla struttura prevista per il device a blocchi.     
+Di seguito vengono spiegate in dettaglio le due mount() e kill_sb() precedenti:
+- struct dentry * [userdatafs_mount](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L174)(struct file_system_type *fs_type, int flags, const char *dev_name, void *data): è la funzione che viene invocata nella fase di mounting del file system. Può essere sintetizzata nei seguenti step:
+    1.  Da specifica, per semplicità, è previsto solo un mount point per volta, di conseguenza all'inizio attravero una CAS il thread che fa la mount cerca di portare a 1 l'intero mounted. Essendo una operazione RMW locked ci sarà solo un thread che in concorrenza potrà portare a 1 mounted, tutti gli altri ritornano al chiamanto con il codice d'errore -EBUSY. [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L197)
+
+    2. Il secondo passo è l'invocazione di mount_bdev per montare il file system memorizzato su un dispositivo a blocchi: 
+        - Viene callocata una struttura generica superblocco (del VFS)
+        - Viene invocata la funzione di callback che prende in input la struttura super_block generica e la riempie. **All'interno della fill_super si verifica se NBLOCK, che è il numero di blocchi gestibili è minore o uguale della dimensione del device.**    
+        [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L44)
+
+    3. Se la mount_bdev ha avuto successo:
+        1. Viene inizializzata la **struttura dati condivisa RCU** . [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L217)
+        2. Viene allocato un **array di size nblocks**  (numero di blocchi totali - 2 del device) che conterrà i metadati di ogni blocco. [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L220)
+        3. Per ogni i da 0 a nblock ([Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L232)):
+             1. Si legge dal device attraverso **sb_bread()**, il blocco ad offset i + 2.
+             2. Viene **inizializzata** l'entry i-esima dell'array con i metadati letti da device. 
+             3. Se il blocco che si sta correntemente leggendo è **valido** allora viene allocato un'istanza di struct message e viene inserita, in base alla **posizione** (indica l'ordine di inserimento) mantenuta sul device, nella lista doppiamente collegata dei messaggi validi . 
+             4. Al termine di ogni ciclo viene invocata la brelse sull'attuale buffer_head pointer. 
+
+    4. Infine, si controlla se c'è stato qualche errore durante l'esecuzione. In questo caso mounted viene riportato a 0 poichè la mount non ha avuto successo. In questo modo, se la mount dovesse fallire, è possibile rieseguirla. [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L293)
+
+
+- static void [userdatafs_kill_superblock](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L98) (struct super_block *s): è la funzione che viene invocata nella fase di unmounting del file system. È caratterizzata dai seguenti passi:
+    1. Come sopra, per prima cosa, un solo thread porta a 0 il valore dell'intero mounted. In questo modo è possibile fare nuovamente il mounting in futuro. [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L114)
+    2. Si va in wait, secondo un approccio basato su polling, fintanto che l'usage count (il numero di thread che sta correntemente lavorando sul device) è diverso zero.  [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L123)
+    3. Una volta diventato zero, si itera sugli elementi della lista di messaggi validi e si riporta su device (in maniera sincrona o meno in base alla presenza o meno della define [SYNC_FLUSH](/user_data_management_project/userdatamgmt.h#L24)) la loro posizione. Avendo tutti inserimenti in coda, la posizione rappresenta implicitamente un ordinamento totale dei messaggi. Memorizzare la posizione è importante affinchè l'ordine d'inserimento dei messaggi persista anche in sequenze di mount e unmount successivi. [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L127)
+    4. Infine, si fa la kill del superblocco e le free dell'array e della lista doppiamente collegata. [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L161)
+
+
 
 ## Implementazione delle system calls:
 
 ## Implementazione delle file_operations supportate dal device driver: 
+Andiamo ad analizzare più in dettaglio le file_operations open, read e close:
+- int [open](/user_data_management_project/userdatamgmt_driver.c#L173) (struct inode*, struct file*): 
+    1. Innanzitutto, si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L185)
+    2. Se la modalità di apertura del file è in write mode, si ritorna il codice d'errore (Read-only FS). [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L190)
+    3. Si rilascia un gettone sull'usage counter globale. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L196)
+    4. Infine, si alloca e inizializza la struttura [current_message](/user_data_management_project/userdatamgmt_driver.h#L48) che memorizza la posizione (nella lista doppiamente collegata), il puntatore  del messaggio corrente e l'offset in lettura nell'attuale sessione di I/O.
+    Il campo offset è posto a 0, position a -1 e curr a NULL. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L197)
+
+- int [release](/user_data_management_project/userdatamgmt_driver.c#L153)(struct inode*, struct file*):
+    1. Innanzitutto, si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L162)
+    2. Si libera la struct current_message dell'attuale sessione di I/O. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L168)
+    3. Si decrementa l'usage counter globale. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L169)
+
+- ssize_t [read](/user_data_management_project/userdatamgmt_driver.c#L1) (struct file*, char __user*, size_t, loff_t*):
+    1. Innanzitutto, si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L26)
+    2. Si verifica che la open almeno una open è stata invocata. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L31)
+    3. Si verfica che ci siano messaggi validi e se l'offset è minore della dimensione del file. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L36)
+    4. Si aggiunge 1 a numero di lettori nell'epoca corrente ([Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L47S)).
+    5. Si verifica se l'offset sia un multiplo di BLK_SIZE. Se il resto con BLK_SIZE è diverso da 0, significa che ci sono dei bytes del blocco precedenti che non sono stati consegnati al lettore. Di conseguenza, a meno che in concorrenza, tra una lettura e la successiva il blocco sia stato invalidato, si continua a leggere il blocco corrente. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L49)
+    6. Se è la prima lettura, cioè è successiva alla open e offset è zero allora il messaggio corrente è il primo elemento della lista dei messaggi validi. Altrimenti il prossimo messaggio è quello la cui posizione è successiva all'elemento letto in precedenza. In quest'ultimo caso si fa una ricerca lineare nella lista e si ritorno il blocco la cui posizione è maggiore o uguale di quella in input (individuata nella lettura precedente). [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L58)
+    7. Una volta individuato il blocco da leggere, si calcola l'offset e si accede al device. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L82). 
+    8. Si va a leggere un numero di bytes pari alla lunghezza del messaggio all'interno del blocco. Infine, si consegnano all'utente attraverso copy_to_user(). [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#122).
+    9. Se copy_to_user () ritorna zero allora ho letto tutti i bytes del messaggio nel blocco. Inoltre, se correntemente il messaggio corrente non ha successore significa che è stato letto l'ultimo blocco. Tuttavia, è possibile che nella read successiva (che dovrebbe leggere il blocco successivo), in concorrenza, sia stato aggiunto un altro blocco. Di conseguenza, si pone il campo position, all'interno della struct current_message, pari alla posizione dell'ultimo messaggio + 1. Se, invece, il messaggio corrente non è l'ultimo, si assegna al campo position la posizione del prossimo elemento (Non è detto che sia la posizione attuale + 1 poichè nell'invalidate non vado ad aggiornare le posizione dei blocchi successivi a quello invalidato. Di fatto, nel mio caso interessa soltanto stabilire un ordinamento totale tra i messaggi) che dovrà essere letto. Se il messaggio successivo venisse invalidato prima di iniziare la lettura corrispondente, la funzione [search](/user_data_management_project/userdatamgmt_driver.c#L68) andrà a trovare l'elemento seguente (se esiste) a quello invalidato. Di conseguenza, verrà comunque letto il blocco corretto.
+    [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L126)
+    10. Infine, viene individuato, a partire dall'epoca corrente, l'indice all'interno dell'array standing. Viene, quindi, aggiunto 1 nell'entry con l'index trovato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L142)
+> **NOTE:** I controlli iniziali nella dev_read sono stati introdotti poichè é richiesto che venga letto il blocco che non è stato invalidato prima dell'accesso in lettua al blocco corrispondente.
 
 ## Linearizzabilità e RCU:
+In un approccio RCU i lettori eseguono in concorrenza (sia tra loro sia rispetto agli scrittori), senza l'utilizzo dei locks, mentre gli scrittori (sys_put_data e sys_invalidate_data) per poter operare sulla struttura dati condivisa devono acquisire un lock in scrittura. Gli scrittori linearizzano i cambiamenti, rendendoli visibili ai reader atomicamente. Nel caso dell'invalidazione, per evitare il rilascio di un elemento che può essere acceduto ancora da lettore, la free del messaggio corrispondente avviene solo dopo che il grace period è terminato ([Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L431)). Il grace period termina quando tutti i lettori che hanno letto la precedente versione della struttura dati condivisa hanno rilasciato un token nell'entry corrispondente dell'array standing.
 
 ## Codice Utente:
 All' interno del progetto sono presenti due sorgenti user level:

@@ -207,62 +207,11 @@ static int dev_open(struct inode *inode, struct file *filp)
     return 0;
 }
 
-// loff_t dev_llseek(struct file *filp, loff_t offset, int whence)
-// {
-//     loff_t newpos;
-//     int off;
-//     struct inode *the_inode = filp->f_inode;
-//     struct current_message *the_message = (struct current_message *)filp->private_data;
-//     struct message *the_valid_message = NULL;
 
-//     switch (whence)
-//     {
-//     case SEEK_SET:
-//         newpos = offset;
-//         break;
-
-//     case SEEK_CUR:
-//         newpos = filp->f_pos + offset;
-//         break;
-
-//     case SEEK_END:
-//         newpos = the_inode->i_size + offset;
-//         break;
-
-//     default:
-//         return -EINVAL;
-//     }
-
-//     if (newpos < 0)
-//         return -EINVAL;
-
-//     off = newpos / BLK_SIZE + 2;
-//     the_valid_message = lookup(sh_data.first, off);
-//     // There is not valid message at the specified offset
-//     if (the_valid_message == NULL)
-//     {
-
-//         the_message->offset = 0;
-//         the_message->curr = sh_data.first;
-//         the_message->position = INVALID_POSITION;
-//         newpos = 0;
-//     }
-//     else
-//     { // The offset specifies a valid message in the double linked list
-
-//         the_message->offset = newpos;
-//         the_message->curr = the_valid_message;
-//         the_message->position = the_message->curr->position;
-//     }
-
-//     filp->f_pos = newpos;
-//     return newpos;
-// }
 
 const struct file_operations dev_fops = {
     .owner = THIS_MODULE,
     .read = dev_read,
     .release = dev_release,
     .open = dev_open,
-    // .llseek = dev_llseek,
 };
