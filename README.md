@@ -162,9 +162,9 @@ Andiamo ad analizzare più in dettaglio le system calls sys_put_data, sys_get_da
     6. Si porta il RAM il contenuto del device per aggiornare i metadati e la posizione è settata a -1.
     7. In modo sincrono o asincrono i cambiamenti verranno riportati sul device.
     8. Si procede ad aggiornare la lista dei messaggi validi andando ad eliminare l'elemento da invalidare dalla lista. Ciò è fatto con costo costante O(1) in seguito all'utilizzo di una lista doppiamente collegata. La delete è caratterizzata dai seguenti passi: 
-        1. Se l'elemento da eliminare è la testa allora viene aggiornato head in modo che punti ad head->next. Ciò è visibile ai lettori immediatamente. Tutti i lettori d'ora in poi vedranno un nuovo elemento che head della lista dei messaggi validi. [Vedere qui](/user_data_management_project/utils.c#225).
-        2. Se l'elemento da eliminare è in mezzo alla lista allora viene sganciato andando ad aggiornare il puntatore a next del precedecessore. Come già detto in precedenza, per costruzione quest'operazione è il punto di linearizzazione per i lettori. Infine, viene aggiornato il puntatore prev del successore. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L231).
-        3. Se l'elemento è la coda allora viene aggiornata in modo che punti al predecessore dell'elemento. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L243).
+        1. Se l'elemento da eliminare è la testa allora viene aggiornato head in modo che punti ad head->next. Ciò è visibile ai lettori immediatamente. Tutti i lettori d'ora in poi vedranno un nuovo elemento che head della lista dei messaggi validi. [Vedere qui](/user_data_management_project/utils.c#L225).
+        2. Se l'elemento da eliminare è in mezzo alla lista allora viene sganciato andando ad aggiornare il puntatore a next del precedecessore. Come già detto in precedenza, per costruzione quest'operazione è il punto di linearizzazione per i lettori. Infine, viene aggiornato il puntatore prev del successore. [Vedere qui](/user_data_management_project/utils.c#L231).
+        3. Se l'elemento è la coda allora viene aggiornata in modo che punti al predecessore dell'elemento. [Vedere qui](/user_data_management_project/utils.c#L243).
     9. Viene individuata la nuova epoca, viene aggiornato atomicamente il puntatore all'epoca corrente e infine si va in attesa del termine del grace period sull'epoca precedente. 
     10. Al termine dell'epoca viene rilasciato lo spinlock, viene liberata la memoria del buffer e decrementato l'usage counter.
 
