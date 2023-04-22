@@ -21,33 +21,33 @@ static int house_keeper(void *unused)
     unsigned long grace_period_threads;
     int index;
     DECLARE_WAIT_QUEUE_HEAD(wait_queue);
-    //Checks if the mount point of 'mount_md' is not equal to NULL, and returns -ENODEV if it is.
+    // Checks if the mount point of 'mount_md' is not equal to NULL, and returns -ENODEV if it is.
     if (mount_md.mount_point == NULL)
         return -ENODEV;
 redo:
     msleep(PERIOD);
-    //Acquires the spin lock associated with the 'write_lock' attribute of the 'sh_data' structure using spin_lock() function.
+    // Acquires the spin lock associated with the 'write_lock' attribute of the 'sh_data' structure using spin_lock() function.
     spin_lock(&sh_data.write_lock);
-    //Updates the 'updated_epoch' variable by assigning MASK if 'next_epoch_index' attribute of the 'sh_data' structure is non-zero, else assigns 0 to it.
+    // Updates the 'updated_epoch' variable by assigning MASK if 'next_epoch_index' attribute of the 'sh_data' structure is non-zero, else assigns 0 to it.
     updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
-    //Increments the value of 'next_epoch_index' attribute of the 'sh_data' structure by 1 and takes the modulus 2 of it.
+    // Increments the value of 'next_epoch_index' attribute of the 'sh_data' structure by 1 and takes the modulus 2 of it.
     sh_data.next_epoch_index += 1;
     sh_data.next_epoch_index %= 2;
-    //Exchanges the value of 'epoch' attribute of the 'sh_data' structure with 'updated_epoch' using __atomic_exchange_n() function and assigns the previous value stored in 'epoch' to 'last_epoch'.
+    // Exchanges the value of 'epoch' attribute of the 'sh_data' structure with 'updated_epoch' using __atomic_exchange_n() function and assigns the previous value stored in 'epoch' to 'last_epoch'.
     last_epoch = __atomic_exchange_n(&(sh_data.epoch), updated_epoch, __ATOMIC_SEQ_CST);
-    //Computes the value of 'index' as 1 if the least significant bit of 'last_epoch' is set, else as 0.
+    // Computes the value of 'index' as 1 if the least significant bit of 'last_epoch' is set, else as 0.
     index = (last_epoch & MASK) ? 1 : 0;
-    //Computes the value of 'grace_period_threads' as the value of 'last_epoch' without the least significant bit.
+    // Computes the value of 'grace_period_threads' as the value of 'last_epoch' without the least significant bit.
     grace_period_threads = last_epoch & (~MASK);
 
     AUDIT printk("house keeping: waiting grace-full period (target index is %ld)\n", grace_period_threads);
-    //Calls wait_event_interruptible() function which waits on the 'wait_queue' until 'standing[index]' of the 'sh_data' structure is greater than or equal to 'grace_period_threads' and can be interrupted by a signal.
+    // Calls wait_event_interruptible() function which waits on the 'wait_queue' until 'standing[index]' of the 'sh_data' structure is greater than or equal to 'grace_period_threads' and can be interrupted by a signal.
     wait_event_interruptible(wait_queue, sh_data.standing[index] >= grace_period_threads);
-    //Sets 'standing[index]' attribute of the 'sh_data' structure to zero.
+    // Sets 'standing[index]' attribute of the 'sh_data' structure to zero.
     sh_data.standing[index] = 0;
-    //Releases the spin lock associated with the 'write_lock' attribute of the 'sh_data' structure using spin_unlock() function.
+    // Releases the spin lock associated with the 'write_lock' attribute of the 'sh_data' structure using spin_unlock() function.
     spin_unlock(&sh_data.write_lock);
-    //Uses goto statement to go back to the redo label and repeat the above steps in an infinite loop.
+    // Uses goto statement to go back to the redo label and repeat the above steps in an infinite loop.
     goto redo;
 
     return 0;
@@ -119,42 +119,49 @@ struct message *to_insert: Pointer to the message to be inserted
 unsigned int position: Express the position in the double linked list where message should be placed
 Return Value:
 This function does not return anything.*/
-void insert_sorted(struct message ** head, struct message **tail, struct message *to_insert, int position) {
+void insert_sorted(struct message **head, struct message **tail, struct message *to_insert, int position)
+{
 
-    struct message* curr;
+    struct message *curr;
     to_insert->prev = *tail;
     to_insert->next = NULL;
 
-    if (*head == NULL) { // se la lista è vuota
+    if (*head == NULL)
+    { // se la lista è vuota
         *head = to_insert;
         *tail = to_insert;
     }
-    else {
+    else
+    {
         curr = *head;
-        while (curr != NULL && curr->position < position) {
+        while (curr != NULL && curr->position < position)
+        {
             curr = curr->next;
         }
 
-        if (curr == NULL) { // inserimento in coda
+        if (curr == NULL)
+        { // inserimento in coda
             (*tail)->next = to_insert;
-             *tail = to_insert;
+            *tail = to_insert;
         }
-        else { // inserimento in mezzo alla lista
+        else
+        { // inserimento in mezzo alla lista
             to_insert->next = curr;
             to_insert->prev = curr->prev;
 
-            if (curr->prev != NULL) {
+            if (curr->prev != NULL)
+            {
                 curr->prev->next = to_insert;
             }
             curr->prev = to_insert;
 
-            if (curr == *head) {
+            if (curr == *head)
+            {
                 *head = to_insert;
             }
         }
     }
 }
-
 
 /*This function frees the memory allocated to each node in a doubly-linked list.
 
@@ -182,16 +189,21 @@ struct blk_element **head: Pointer to the head of the array
 Return Value:
 This function does not return anything.*/
 void free_array(struct blk_element **head)
-{   int i ;
+{
+    int i;
     /* It then frees the memory allocated for the array and sorted list using the kfree (or vmalloc) and free_list() functions, respectively.*/
-    for (i = 0; i < nblocks; i++){
-        if (head[i]== NULL) break;
+    for (i = 0; i < nblocks; i++)
+    {
+        if (head[i] == NULL)
+            break;
         kfree(head[i]);
     }
 
-    //Freeing the head of the array...
-    if (sizeof(struct blk_element *) * nblocks < 128 * 1024) kfree(head);
-    else vfree(head);
+    // Freeing the head of the array...
+    if (sizeof(struct blk_element *) * nblocks < 128 * 1024)
+        kfree(head);
+    else
+        vfree(head);
 }
 
 /*This function deletes a specific node from a doubly-linked list.
@@ -213,7 +225,7 @@ void delete(struct message **head, struct message **tail, struct message *to_del
     if (*head == to_delete)
     {
         *head = (*head)->next;
-        asm volatile("mfence"); 
+        asm volatile("mfence");
     }
 
     if (to_delete->prev != NULL)
@@ -231,24 +243,38 @@ void delete(struct message **head, struct message **tail, struct message *to_del
     if (*tail == to_delete)
     {
         *tail = (*tail)->prev;
-        asm volatile("mfence"); 
+        asm volatile("mfence");
     }
 
-    
     AUDIT printk("%s: The delete operation correctly completed", MOD_NAME);
 }
 
-/*This function is used for debugging purposes. It prints the indices stored in each node of a given list.
+/*This function is used for debugging purposes. It prints the indices and positions stored in each node of a given list.
 
 Parameters:
 struct message *head: A pointer to the head of the linked list.
 */
-void stampa_lista(struct message *head)
+void print_list(struct message *head)
 {
     while (head != NULL)
     {
-        AUDIT printk("%d ", head->index);
+        AUDIT printk("%s: INDEX: %d - POSITION: %d", MOD_NAME, head->index, head->position);
         head = head->next;
+    }
+    return;
+}
+
+/*This function is used for debugging purposes. It prints the indices and positions in each node of a given list.
+
+Parameters:
+struct message *tail: A pointer to the tail of the linked list.
+*/
+void print_reverse(struct message *tail)
+{
+    while (tail != NULL)
+    {
+        AUDIT printk("%s: INDEX: %d - POSITION: %d", MOD_NAME, tail->index, tail->position);
+        tail = tail->prev;
     }
     return;
 }
@@ -257,11 +283,15 @@ void stampa_lista(struct message *head)
 Parameters:
 struct message*: A pointer to the head of the double linked list.
 int pos: An integer representing the value to be searched*/
-struct message *search(struct message *head, int pos) {
+struct message *search(struct message *head, struct message *tail, int pos)
+{
 
     struct message *curr = head;
 
-    while (curr != NULL && curr->position < pos) {
+    // if (tail->position < pos) return NULL;
+
+    while (curr != NULL && curr->position < pos)
+    {
         curr = curr->next;
     }
 
@@ -272,13 +302,94 @@ struct message *search(struct message *head, int pos) {
 Parameters:
 struct message*: A pointer to the head of the double linked list.
 int index: An integer representing the index in the device driver to be searched*/
-struct message *lookup(struct message *head, int index) {
+struct message *lookup(struct message *head, int index)
+{
 
     struct message *curr = head;
 
-    while (curr != NULL && curr->index != index) {
+    while (curr != NULL && curr->index != index)
+    {
         curr = curr->next;
     }
 
     return curr;
+}
+
+// swapNodes takes 2 parameters two nodes to be swapped.
+void swapNodes(struct message *node1, struct message *node2)
+{   
+    int temp;
+    struct blk_element * temp_elem;
+
+    if (node1 == node2)
+    {
+        return;
+    }
+
+    /* Swapping the position*/
+    temp = node1->position;
+    node1->position = node2->position;
+    node2->position = temp;
+
+    /* Swapping the position*/
+    temp = node1->index;
+    node1->index = node2->index;
+    node2->index = temp;
+
+    /* Swapping blk_element*/
+    temp_elem = node1->elem;
+    node1->elem = node2->elem;
+    node2->elem = temp_elem;
+
+}
+
+/*partition takes two nodes as its parameters, a lower node and a higher node. It finds the pivot by selecting the last item in the list,
+and iterates through the list checking if each position is less than or equal to the pivot value.
+If it is, it swaps that node with the node at the 'i' position, where 'i' is one greater than the current 'i'.
+When all items up until the high node have been processed in this way,
+then the node at the 'i' position is swapped with the high node thereby providing us with the pivot element.*/
+static struct message *partition(struct message *start, struct message *end)
+{   
+    struct message *pivot = end;
+    struct message *i = start->prev;
+    struct message *j = NULL;
+
+    if (start == end || start == NULL || end == NULL)
+        return start;
+
+    for (j = start; j != end; j = j->next)
+    {
+        if (j->position <= pivot->position)
+        {   
+            i = (i == NULL ? start : i->next);
+            swapNodes(i, j);
+        }
+    }
+    i = (i == NULL ? start : i->next);
+    swapNodes(i, end);
+    return i;
+}
+
+/*quickSort performs the main sorting logic. It takes two nodes as its parameters, a low node and a high node.
+ it calls findPivot to get the pivot element, then recursively calls quickSort function for the lower half and upper half of the linked list based on the pivot element.
+ The resulting sorted list is obtained by combining the two halves.*/
+void quickSort(struct message *start, struct message *end)
+{   
+    struct message *pivot = NULL;
+    if (start == NULL || start == end || start == end->next)
+        return;
+
+    pivot = partition(start, end);
+    quickSort(start, pivot->prev);
+
+    // if pivot is picked and moved to the start,
+    // that means start and pivot is same
+    // so pick from next of pivot
+    if (pivot != NULL && pivot == start)
+        quickSort(pivot->next, end);
+
+    // if pivot is in between of the list,
+    // start from next of pivot,
+    else if (pivot != NULL && pivot->next != NULL)
+        quickSort(pivot->next, end);
 }

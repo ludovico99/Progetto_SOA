@@ -276,12 +276,18 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     message->index = i;
                     message->position = the_block->pos;
 
-                    // Insertion in the valid messages double linked list
-                    insert_sorted(&sh_data.first, &sh_data.last, message, the_block->pos);
+                    // Insertion at the end of the valid messages double linked list
+                    insert_sorted(&sh_data.first, &sh_data.last, message,  message->position);
+
+                    /*decomment the previous line in case you want to use the Quick Sort*/
+                    //insert (&sh_data.first, &sh_data.last, message); 
                 }
             }
             brelse(bh);
         }
+    /*Quick sort has been implemented for performance reasons. To avoid too many recursions is commented and 
+    the iterative version with upper bound O(n^2) is preferred. */
+    //quickSort(sh_data.first, sh_data.last); //Sorting with upper bound O(n*log(n))
 
     exit_2:
         if (unlikely(IS_ERR(ret)))

@@ -46,108 +46,106 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
 
     my_epoch = __sync_fetch_and_add(&(sh_data.epoch), 1);
 
-    if (my_off % BLK_SIZE != 0) {//It means that he wants to read residual bytes of the same block
+    if (my_off % BLK_SIZE != 0)
+    { // It means that he wants to read residual bytes of the same block
 
-        //The block concurrently has been invalidated...
-        if (the_message->curr == NULL || the_message->curr->elem == NULL ||  the_message->curr->prev->next != the_message->curr) return 0;
-        else goto read_same_block; 
-    } 
+        // The block concurrently has been invalidated...
+        if (the_message->curr == NULL || the_message->curr->elem == NULL || the_message->curr->prev->next != the_message->curr) goto release_token;
+        else
+            goto read_same_block;
+    }
 
-    if (the_message->position == INVALID_POSITION && my_off == 0) // It means that it's the first read of the I/O session and want to read from offset 0. I assume that he wants to read all the data
+    if (the_message->position == INVALID_POSITION && my_off == 0)
+    // It means that it's the first read of the I/O session and want to read from offset 0. I assume that he wants to read all the data
     {
+        AUDIT printk("%s: Reading the first block...", MOD_NAME);
         the_message->curr = sh_data.first;
-        the_message->position = the_message->curr->position;
-        my_off = (the_message->curr->index) * BLK_SIZE;
     }
-    // Reading the following block in the valid message list (If the writer in the meantime has linearized the invalidation operation)
-    else if (the_message->curr == NULL || the_message->curr->elem == NULL ||  the_message->curr->prev->next != the_message->curr)
+    // Reading the following block in the valid message list
+    else
     {
-        
-    
-        the_message->curr = search(sh_data.first, the_message->position);
-        if (the_message -> curr == NULL) return 0; //The following block in the valid message list is invalid too
-        the_message->position = the_message->curr->position;
-        my_off = (the_message->curr->index) * BLK_SIZE;
+        AUDIT printk("%s: Computing the following block to read...", MOD_NAME);
+        the_message->curr = search(sh_data.first, sh_data.last, the_message->position);
+        if (the_message->curr == NULL)
+        { // There are no other valid messages
+            my_off = file_size;
+            the_message->position = INVALID_POSITION;
+            goto release_token;
+        }
     }
-    // else --> Reading the current block
+
+    the_message->position = the_message->curr->position;
+    my_off = (the_message->curr->index) * BLK_SIZE;
 
 read_same_block:
-   
+
     the_block = the_message->curr->elem;
     if (the_block != NULL) // Consistency check
         // compute the actual index of the the block to be read from device
         block_to_read = my_off / BLK_SIZE + 2; // the value 2 accounts for superblock and file-inode on device
-    else
-    {
-        index = (my_epoch & MASK) ? 1 : 0;
-        __sync_fetch_and_add(&(sh_data.standing[index]), 1);
-        return 0;
-    }
+    else goto release_token;
 
-    if (block_to_read > NBLOCKS + 2) // Consistency check: block_to_read must be less or equal than NBLOCKS + 2
-    { 
-        index = (my_epoch & MASK) ? 1 : 0;
-        __sync_fetch_and_add(&(sh_data.standing[index]), 1);
-        return 0;
-    }
+    // Consistency check: block_to_read must be less or equal than NBLOCKS + 2
+    if (block_to_read > NBLOCKS + 2) goto release_token;
 
     AUDIT printk("%s: Read operation must access block %d of the device", MOD_NAME, block_to_read);
 
-    //Reading the block at offset block_to_read in the device
+    // Reading the block at offset block_to_read in the device
     bh = (struct buffer_head *)sb_bread(sb, block_to_read);
     if (!bh)
     {
         printk("%s: Error in retrieving the block %d", MOD_NAME, block_to_read);
-        index = (my_epoch & MASK) ? 1 : 0;
-        __sync_fetch_and_add(&(sh_data.standing[index]), 1);
-        return -EIO;
+        ret = -EIO;
+        goto release_token;
     }
 
     blk = (struct dev_blk *)bh->b_data;
 
     if (blk != NULL)
     {
-        str_len = get_length(blk->metadata); //str_len is initialized to the message length 
-        offset = my_off % BLK_SIZE; // Residual bytes
+        str_len = get_length(blk->metadata); // str_len is initialized to the message length
+        offset = my_off % BLK_SIZE;          // Residual bytes
 
-        AUDIT {
+        AUDIT
+        {
             printk("%s: Block at index %d has message with length %d", MOD_NAME, get_index(block_to_read), str_len);
             printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, get_index(block_to_read), offset, str_len - offset);
         }
         if (offset == 0)
             len = str_len;
-        else if (offset <  str_len)
+        else if (offset < str_len)
             len = str_len - offset;
         else
             len = 0;
 
-        //Copy len bytes of message into the user buffer
+        // Copy len bytes of message into the user buffer
         ret = copy_to_user(buf, blk->data + offset, len);
-        if (ret == 0 && the_message->curr->next == NULL)
-            my_off = file_size; // In this way the next read will end with code 0
 
-        else if (ret == 0) // Computing the next block to read
-        {
-            index = the_message->curr->next->index;
-            my_off = index * BLK_SIZE;
-            the_message->curr = the_message->curr->next;
-            the_message->position = the_message->curr->position;
-        }
-        else //Unable to copy to the user len bytes 
+        // i try to read an eventually inserted block.
+        // Before the next read begins, a writer may have written other blocks.
+        if (ret == 0 && the_message->curr->next == NULL)
+            the_message->position = the_message->curr->position + 1;
+        // Computing the position in the valid messages list to be read
+        else if (ret == 0)
+            the_message->position = the_message->curr->next->position;
+        // Unable to copy to the user len bytes
+        else
             my_off += len - ret;
+
+        ret = len - ret;
     }
     else
         my_off += BLK_SIZE;
 
     brelse(bh);
 
+release_token:
     index = (my_epoch & MASK) ? 1 : 0;
     __sync_fetch_and_add(&(sh_data.standing[index]), 1);
 
     *off = my_off;
     the_message->offset = my_off;
-
-    return len - ret;
+    return ret;
 }
 
 /*This function is called when the device file is released by the user.
@@ -209,9 +207,62 @@ static int dev_open(struct inode *inode, struct file *filp)
     return 0;
 }
 
+// loff_t dev_llseek(struct file *filp, loff_t offset, int whence)
+// {
+//     loff_t newpos;
+//     int off;
+//     struct inode *the_inode = filp->f_inode;
+//     struct current_message *the_message = (struct current_message *)filp->private_data;
+//     struct message *the_valid_message = NULL;
+
+//     switch (whence)
+//     {
+//     case SEEK_SET:
+//         newpos = offset;
+//         break;
+
+//     case SEEK_CUR:
+//         newpos = filp->f_pos + offset;
+//         break;
+
+//     case SEEK_END:
+//         newpos = the_inode->i_size + offset;
+//         break;
+
+//     default:
+//         return -EINVAL;
+//     }
+
+//     if (newpos < 0)
+//         return -EINVAL;
+
+//     off = newpos / BLK_SIZE + 2;
+//     the_valid_message = lookup(sh_data.first, off);
+//     // There is not valid message at the specified offset
+//     if (the_valid_message == NULL)
+//     {
+
+//         the_message->offset = 0;
+//         the_message->curr = sh_data.first;
+//         the_message->position = INVALID_POSITION;
+//         newpos = 0;
+//     }
+//     else
+//     { // The offset specifies a valid message in the double linked list
+
+//         the_message->offset = newpos;
+//         the_message->curr = the_valid_message;
+//         the_message->position = the_message->curr->position;
+//     }
+
+//     filp->f_pos = newpos;
+//     return newpos;
+// }
+
 const struct file_operations dev_fops = {
     .owner = THIS_MODULE,
     .read = dev_read,
     .release = dev_release,
     .open = dev_open,
+    // .llseek = dev_llseek,
 };

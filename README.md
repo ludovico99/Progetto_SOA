@@ -20,7 +20,7 @@ sudo make install_the_usctm
 # Indice:
 1. [Introduzione](#introduzione)
 2. [Data structures](#strutture-dati)
-3. [System calls](#implementazione-delle-systemcalls)
+3. [System calls](#implementazione-delle-system-calls)
 4. [File_operations](#implementazione-delle-file_operations-supportate-dal-device-driver)
 5. [Linearizzabilità e RCU](#linearizzabilità-e-RCU)
 6. [User code](#codice-utente)
@@ -33,9 +33,9 @@ Il progetto prevede la realizzazione di un linux device driver che implementi bl
 - int [invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L297) (int offset)
 
 e di 3 file operations che driver deve supportare:
-- int [open](/user_data_management_project/userdatamgmt_driver.c#L1) (struct inode*, struct file*)
+- int [open](/user_data_management_project/userdatamgmt_driver.c#L175) (struct inode*, struct file*)
 - int [release](/user_data_management_project/userdatamgmt_driver.c#L153)(struct inode*, struct file*)
-- ssize_t [read](/user_data_management_project/userdatamgmt_driver.c#L175) (struct file*, char __user*, size_t, loff_t*)
+- ssize_t [read](/user_data_management_project/userdatamgmt_driver.c#L1) (struct file*, char __user*, size_t, loff_t*)
 
 Il device driver deve essere accessibile come file in un file system che supporti le file_operations precedenti. Di conseguenza, si è deciso di  integrare il progetto con il modulo singlefile-FS (che è l'implementazione di un file system accessibile come fosse un file regolare, attraverso l'utilizzo del loop driver) andando ad associare nell'inode del file (che è l'unico file che il FS è in grado di gestire) il puntatore alla struct file_operations (istanziata [qui](/user_data_management_project/userdatamgmt_driver.c#L212)) contenente i riferimenti alle funzioni di driver implementate (vedere il seguente [link](/user_data_management_project/file_system/file.c#L47)).
 
@@ -88,14 +88,15 @@ Per la realizzazione del device driver sono state introdotte le seguenti struttu
     - int mounted: è una variabile che è settata atomicamente a 1 se il FS è montato e 0 altrimenti
     - char *mount_point: punto di ancoraggio a partire da /
 
+## File system:
 
-## Implementazione delle system calls
+## Implementazione delle system calls:
 
-## Implementazione delle file_operations supportate dal device driver 
+## Implementazione delle file_operations supportate dal device driver: 
 
-## Linearizzabilità e RCU
+## Linearizzabilità e RCU:
 
-## Codice Utente
+## Codice Utente:
 All' interno del progetto sono presenti due sorgenti user level:
  - [makefs.c](/user_data_management_project/file_system/makefs.c): è il file sorgente che formatta il device per il suo utilizzo. Il device è formattato nel seguente modo:
     1. Scrittura del superblocco
@@ -110,7 +111,7 @@ All' interno del progetto sono presenti due sorgenti user level:
     - [multi-ops](/user_data_management_project/user/Makefile#L36): Il 66% dei threads creati sono readers, il restante sono writers. In base al loro indice, ogni thread esegue una delle tre system call sul blocco passato in input di sua competenza. 
     - [same-block-ops](/user_data_management_project/user/Makefile#L40): Il 66% dei threads creati sono readers, il restante sono writers. Per un numero di volte pari REQS, ogni thread (in base al suo id) invoca una system call sullo stesso blocco. Ho usato questa modalià per valutare l'interleave di writers e readers e il corretto funzionamento dell'approccio RCU.
 
-## Compilazione ed esecuzione
+## Compilazione ed esecuzione:
 La fase di compilazione è caratterizzata dai seguenti passi:
 
 1. Posizionarsi nella root directory del progetto ed eseguire i seguenti comandi del Makefile più esterno.

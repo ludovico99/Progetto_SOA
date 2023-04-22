@@ -18,6 +18,12 @@
         "ostream": "c",
         "array": "c",
         "string": "c",
-        "string_view": "c"
+        "string_view": "c",
+        "system_error": "c",
+        "deque": "c",
+        "vector": "c",
+        "cstdlib": "c",
+        "algorithm": "c",
+        "functional": "c"
     }
 }

@@ -138,8 +138,12 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         {
             AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
         }
-        else
+        else {
             printk("%s: Synchronous flush not succeded", MOD_NAME);
+            brelse(bh);
+            ret = - EIO;
+            goto all;
+        }
 #endif
         // Releases the buffer_head structure.
         brelse(bh);
@@ -172,7 +176,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 
         // Otherwise, appends the_message variable at the end of the sh_data list.
         AUDIT printk("%s: Appending the newest message in the double linked list...", MOD_NAME);
-        the_message->position = (*the_tail)->position++;
+        the_message->position = (*the_tail)->position + 1;
 
         *the_tail = the_message;
 
@@ -390,8 +394,12 @@ asmlinkage long sys_invalidate_data(int offset)
         {
             AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
         }
-        else
+        else {
             printk("%s: Synchronous flush not succeded", MOD_NAME);
+            ret = - EIO;
+            spin_unlock((&sh_data.write_lock));
+            goto exit;
+        }
 #endif
         brelse(bh);
 
