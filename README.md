@@ -30,8 +30,8 @@ sudo make install_the_usctm
 ## Introduzione:
 Il progetto prevede la realizzazione di un linux device driver che implementi block level maintenance di messaggi utente. Un blocco del block-device ha taglia 4 KB e mantiene 6 (2 bytes per i metadati e 4 bytes per memorizzare la posizione all'interno della lista doppiamente collegata dei messaggi validi) bytes di dati utente e 4 KB - 6 bytes per i metadati. Si richiede l'implementazione di 3 system calls non nativamente supportate dal VFS:
 - int  [put_data](/user_data_management_project/userdatamgmt_sc.c#L3)(char* source, size_t size) 
-- int [get_data](/user_data_management_project/userdatamgmt_sc.c#L200) (int offset, char * destination, size_t size)
-- int [invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L297) (int offset)
+- int [get_data](/user_data_management_project/userdatamgmt_sc.c#L204) (int offset, char * destination, size_t size)
+- int [invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L301) (int offset)
 
 e di 3 file operations che driver deve supportare:
 - int [open](/user_data_management_project/userdatamgmt_driver.c#L175) (struct inode*, struct file*)
@@ -122,6 +122,52 @@ Di seguito vengono spiegate in dettaglio le due mount() e kill_sb() precedenti:
 
 
 ## Implementazione delle system calls:
+Andiamo ad analizzare più in dettaglio le system calls sys_put_data, sys_get_data e sys_invalidate_data:
+- int [sys_put_data](/user_data_management_project/userdatamgmt_sc.c#L3)(char* source, size_t size): 
+    1. Si rende impossibile l'operazione di unmount del FS aggiungendo 1 all'usage counter. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L30)
+    2. Si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L33)
+    3. Si verifica il valore di size_t: se è maggiore della SIZE, cioè il numero massimo di bytes per un messaggio allora size è "limitata" a SIZE. Inoltre se size è minore di zero ritorna -EINVAL. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L42)
+    4. Al di fuori della critical section, si calcola il nuovo valore per i metadati da assegnare al primo blocco libero (se esiste) e si alloca il buffer di destinazione (lato kernel). [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L51)
+    5. Se l'allocazione è andata a buon fine, si copia il contenuto del buffer user nel buffer di destinazione, attraverso copy_from_user(), e si copiano i metadati nella corretta posizione del buffer. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L66). 
+    6. Si alloca memoria di livello kernel per la struttura che individuerà il nuovo messaggio utente all'interno della lista doppiamente collegata.[Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L72)
+    7. Il thread corrente va in attesa del lock in scrittura.[Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L82)
+    8. Una volta acquisito il lock, viene attraversato l'array di metadati per individuare il primo blocco ,se esiste, non valido.[Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L89)
+    9. Successivamente, viene scritto in modo sincrono o attraverso il page-cache write back daemon nel blocco individuato il contenuto del buffer di destinazione. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L89)
+    10. Se l'operazione ha avuto successo si procede con l'aggiornamento delle strutture dati condivise: 
+        1. Si inizializza la struct messagge con l'indice, il puntatore prev e il puntatore all'elemento dell'array contenente i metadati corrispondenti. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L151)
+        >**NOTE**: Ad ora il messaggio non è ancora visibile ai readers non avendo agganciato il predecessore (ultimo elemento nei messaggi validi prima dell'inserimento) all'attuale messaggio (ultimo elemento nei messaggi validi dopo l'inserimento) 
+        2. Si fa puntare l'elemento dell'array contenente i metadati al nuovo messaggio e si aggiornano i metadati. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L159)
+        >**NOTE**: Solo gli scrittori accedono all'array dei metadati. I lettori non attraverseranno mai l'array. Di conseguenza non ho problemi di consistenza.
+        3. Infine, si calcola la posizione del nuovo messaggio e si inserisce l'elemento all'interno della lista doppiamente collegata. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L162)
+         >**NOTE**: Essendo che i readers attraversano la lista dei messaggi validi a partire dalla testa, l' operazione linearizzante per i lettori è l'aggiornamento del puntatore a next del predecessore in modo tale che punti al messaggio appena inserito.
+    11. Si rilascia lo spinlock, il buffer di destinazione e si decrementa l'usage counter. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L186)
+
+
+- int [sys_get_data](/user_data_management_project/userdatamgmt_sc.c#L204) (int offset, char * destination, size_t size):
+    1. Si rende impossibile l'operazione di unmount del FS aggiungendo 1 all'usage counter. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L229)
+    2. Si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L231)
+    3. Si verifica il valore di size_t; se è maggiore della SIZE, cioè il numero massimo di bytes per un messaggio allora size è "limitata" a SIZE. Inoltre, se size è minore di zero o se offset è minore di 0 o maggiore di nblocks -1 viene ritornato -EINVAL.  [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L237)
+    4. Si aggiunge 1 all'epoca corrente e si individua all'interno della lista doppiamente collegata il messaggio, che corrisponde al blocco con indice in input. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L245)
+    5. Se il blocco mantiene un messaggio valido allora si va a leggere da device. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L257)
+    6. All'interno di un ciclo while vengono gestiti eventuali residui nella consegna all'utente. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L273)
+    7. Infine, viene individuato, a partire dall'epoca corrente, l'indice all'interno dell'array standing. Viene, quindi, aggiunto 1 nell'entry con l'index trovato e si decrementa l'usage counter. 
+    [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L289)
+
+- int [sys_invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L301) (int offset):
+    1. Si rende impossibile l'operazione di unmount del FS aggiungendo 1 all'usage counter. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L328)
+    2. Si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L331)
+    3. Si verifica il valore di offset: se offset è minore di 0 o maggiore di nblocks -1 viene ritornato -EINVAL.  [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L338)
+    4.  Il thread corrente va in attesa del lock in scrittura.[Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L346).
+    5. Una volta acquisito il lock, si accede con costo 0(1) ai metadati del blocco ad indice pari all'offset in input. Se il blocco è già stato invalidato allora viene ritornato -ENODATA. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L350).
+    6. Si porta il RAM il contenuto del device per aggiornare i metadati e la posizione è settata a -1.
+    7. In modo sincrono o asincrono i cambiamenti verranno riportati sul device.
+    8. Si procede ad aggiornare la lista dei messaggi validi andando ad eliminare l'elemento da invalidare dalla lista. Ciò è fatto con costo costante O(1) in seguito all'utilizzo di una lista doppiamente collegata. La delete è caratterizzata dai seguenti passi: 
+        1. Se l'elemento da eliminare è la testa allora viene aggiornato head in modo che punti ad head->next. Ciò è visibile ai lettori immediatamente. Tutti i lettori d'ora in poi vedranno un nuovo elemento che head della lista dei messaggi validi. [Vedere qui](/user_data_management_project/utils.c#225).
+        2. Se l'elemento da eliminare è in mezzo alla lista allora viene sganciato andando ad aggiornare il puntatore a next del precedecessore. Come già detto in precedenza, per costruzione quest'operazione è il punto di linearizzazione per i lettori. Infine, viene aggiornato il puntatore prev del successore. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L231).
+        3. Se l'elemento è la coda allora viene aggiornata in modo che punti al predecessore dell'elemento. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L243).
+    9. Viene individuata la nuova epoca, viene aggiornato atomicamente il puntatore all'epoca corrente e infine si va in attesa del termine del grace period sull'epoca precedente. 
+    10. Al termine dell'epoca viene rilasciato lo spinlock, viene liberata la memoria del buffer e decrementato l'usage counter.
+
 
 ## Implementazione delle file_operations supportate dal device driver: 
 Andiamo ad analizzare più in dettaglio le file_operations open, read e close:
