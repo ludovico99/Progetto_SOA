@@ -28,7 +28,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 
     // Atomically adds 1 to bdev_md.count variable and returns the new value.
     __sync_fetch_and_add(&(bdev_md.count), 1);
-    AUDIT printk("%s: SYS_PUT_DATA \n", MOD_NAME);
+    AUDIT printk("%s: Thread with PID %d is executing SYS_PUT_DATA \n", MOD_NAME, current->pid);
 
     if (!mount_md.mounted)
     {
@@ -64,7 +64,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     }
     // Copies data from user space to kernel space, starting at the address of the destination array plus the size of the metadata and with a maximum size equal to size. The number of bytes that could not be copied is stored in the residual_bytes variable.
     residual_bytes = copy_from_user(destination, source, size);
-    AUDIT printk("%s: Copy_from_user residual bytes %ld", MOD_NAME, residual_bytes);
+   
     // Copies the metadata field of the_block structure to the first MD_SIZE bytes of the destination array.
     memcpy(destination + SIZE, &the_metadata, MD_SIZE - POS_SIZE);
 
@@ -114,7 +114,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
     }
     // Reads a block from the device starting at the offset indicated by the ret variable.
-    printk("%s: Flushing changes into the device", MOD_NAME);
+    printk("%s: Thread with PID %d is flushing changes into the device", MOD_NAME, current -> pid);
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, ret);
     if (!bh)
     {
@@ -152,7 +152,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         // Releases the buffer_head structure.
         brelse(bh);
         // If the device driver update is properly set, the RCU structure update can start
-        AUDIT printk("%s: Updating the kernel structures ...", MOD_NAME);
+        AUDIT printk("%s: Thread with PID %d is updating the kernel structures ...", MOD_NAME, current -> pid);
         // Don't need locked / synchronizing operation since the new message isn't available to readers
         the_message->index = get_index(ret);
         the_message->elem = the_block;
@@ -178,13 +178,15 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         }
 
         // Otherwise, appends the_message variable at the end of the sh_data list.
-        AUDIT printk("%s: Appending the newest message in the double linked list...", MOD_NAME);
+        AUDIT printk("%s: Thread with PID %d is appending the newest message in the double linked list...", MOD_NAME, current ->pid);
         the_message->position = (*the_tail)->position + 1;
 
         *the_tail = the_message;
 
         the_message->prev->next = the_message; // Linearization point for the readers
         asm volatile("mfence");
+
+        AUDIT printk("%s: Thread with PID %d has correctly completed the put operation", MOD_NAME, current ->pid);
     }
 all:
     // Releases the write lock of the sh_data structure.
@@ -229,7 +231,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     loff_t off = 0;
 
     __sync_fetch_and_add(&(bdev_md.count), 1); // The unmount operation is not permitted
-    AUDIT printk("%s: SYS_GET_DATA \n", MOD_NAME);
+    AUDIT printk("%s: Thread with PID %d is executing SYS_GET_DATA \n", MOD_NAME, current->pid);
     if (!mount_md.mounted)
     {
         printk("%s: The device is not mounted", MOD_NAME);
@@ -274,7 +276,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 
         while (ret != 0)
         {
-            AUDIT printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, get_offset(offset), off, msg_len - off);
+            AUDIT printk("%s: Thread with PID %d is reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, current->pid, get_offset(offset), off, msg_len - off);
             if (off == 0)
                 len = size;
             else if (off < size)
@@ -285,6 +287,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
             ret = copy_to_user(destination, dev_blk->data + off, len); // Returns number of bytes that could not be copied
             off += len - ret;                                          // Residual
         }
+        AUDIT printk("%s: Thread with PID %d has completed the read operation ...", MOD_NAME, current->pid);
         ret = len - ret;
     }
     brelse(bh);
@@ -328,7 +331,7 @@ asmlinkage long sys_invalidate_data(int offset)
     DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
 
     __sync_fetch_and_add(&(bdev_md.count), 1); // The unmount operation is not permitted
-    AUDIT printk("%s: SYS_INVALIDATE_DATA \n", MOD_NAME);
+    AUDIT printk("%s: The thread %d is executing SYS_INVALIDATE_DATA\n", MOD_NAME, current->pid);
 
     if (!mount_md.mounted)
     {
@@ -347,34 +350,34 @@ asmlinkage long sys_invalidate_data(int offset)
     // Acquiring the lock to avoid writers concurrency ...
     spin_lock(&(sh_data.write_lock));
 
-    AUDIT printk("%s: Accessing metadata for the block at index %d", MOD_NAME, offset);
+    AUDIT printk("%s: Thread with PID %d is accessing metadata for the block at index %d", MOD_NAME, current->pid, offset);
     // Accessing to the block's metadata with offset as index
     the_block = head[offset];
     if (the_block == NULL) // Consistency check: The array should contains all block in the device
-    {
-        printk("%s: The block with the specified offset has no device matches", MOD_NAME);
-        ret = -ENODATA;
+    {   
         // Releasing the write lock ...
         spin_unlock((&sh_data.write_lock));
+        printk("%s: The block with the specified offset has no device matches", MOD_NAME);
+        ret = -ENODATA;
         goto exit;
     }
     if (!get_validity(the_block->metadata)) // The block with the specified offset has been already invalidated
-    {
-        printk("%s: The block with the specified offset has been already invalidated", MOD_NAME);
-        ret = -ENODATA;
+    {   
         // Releasing the write lock ...
         spin_unlock((&sh_data.write_lock));
+        printk("%s: The block with the specified offset has been already invalidated", MOD_NAME);
+        ret = -ENODATA;
         goto exit;
     }
     // FLUSHING CHANGES INTO THE DEVICE
-    AUDIT printk("%s: Flushing changes into the device", MOD_NAME);
+    AUDIT printk("%s: Thread with PID %d is flushing changes into the device", MOD_NAME, current->pid);
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, get_offset(offset));
     if (!bh)
-    {
-        printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
-        ret = -EIO;
+    {   
         // Releasing the write lock ...
         spin_unlock((&sh_data.write_lock));
+        printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
+        ret = -EIO;
         goto exit;
     }
     blk = (struct dev_blk *)bh->b_data;
@@ -395,17 +398,17 @@ asmlinkage long sys_invalidate_data(int offset)
             AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
         }
         else
-        {
+        {   
+            spin_unlock((&sh_data.write_lock));
             printk("%s: Synchronous flush not succeded", MOD_NAME);
             ret = -EIO;
-            spin_unlock((&sh_data.write_lock));
             goto exit;
         }
 #endif
         brelse(bh);
 
         // If the device driver update is properly set, the RCU structure update can start
-        AUDIT printk("%s: Deleting the message from valid messages list...", MOD_NAME);
+        AUDIT printk("%s: Thread with PID %d is deleting the message from valid messages list...", MOD_NAME, current->pid);
 
         // Get the pointer to the message linked to the block that has to be invalidated ...
         the_message = the_block->msg;
@@ -434,7 +437,7 @@ asmlinkage long sys_invalidate_data(int offset)
         // Releasing the write lock ...
         spin_unlock((&sh_data.write_lock));
 
-        AUDIT printk("%s: Removing invalidated message from valid messages list...\n", MOD_NAME);
+        AUDIT printk("%s: Thread with PID %d is releasing the buffer of the invalidate message ...\n", MOD_NAME, current->pid);
         // Finally the grace period endeded and the message can be released ...
         if (the_message)
             kfree(the_message);

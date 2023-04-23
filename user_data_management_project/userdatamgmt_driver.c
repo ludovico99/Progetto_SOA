@@ -121,13 +121,10 @@ read_same_block:
         // Copy len bytes of message into the user buffer
         ret = copy_to_user(buf, blk->data + offset, len);
 
-        // i try to read an eventually inserted block.
-        // Before the next read begins, a writer may have written other blocks.
-        if (ret == 0 && the_message->curr->next == NULL)
-            the_message->position = the_message->curr->position + 1;
         // Computing the position in the valid messages list to be read
-        else if (ret == 0)
-            the_message->position = the_message->curr->next->position;
+        // I try also to read an eventually inserted block: before the next read begins, a writer may have written other blocks.
+        if (ret == 0)
+            the_message->position = the_message->curr->position + 1;
         // Unable to copy to the user len bytes
         else
             my_off += len - ret;

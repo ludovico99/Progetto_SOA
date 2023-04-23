@@ -38,4 +38,4 @@ multi-ops:
 
 #Solo multi-threads
 same-block-ops:
-	./user $(same_block_ops) 8	
+	./user $(same_block_ops) 0	
