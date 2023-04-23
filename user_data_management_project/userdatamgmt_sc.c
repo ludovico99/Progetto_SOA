@@ -235,6 +235,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     if (!mount_md.mounted)
     {
         printk("%s: The device is not mounted", MOD_NAME);
+        __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
         return -ENODEV;
     }
 
@@ -243,11 +244,12 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     if (size < 0 || offset > nblocks - 1 || offset < 0)
     {
         printk("%s: The offset is not valid", MOD_NAME);
+        __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
         return -EINVAL;
     }
 
     // Adding 1 to the current epoch
-    my_epoch = __sync_fetch_and_add(&sh_data.epoch, 1);
+    my_epoch = __sync_fetch_and_add(&(sh_data.epoch), 1);
 
     // Searching the message with the specified offset in the valid messages list
     the_message = lookup_by_index(sh_data.first, offset);
@@ -285,7 +287,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
                 len = 0;
 
             ret = copy_to_user(destination, dev_blk->data + off, len); // Returns number of bytes that could not be copied
-            off += len - ret;                                          // Residual
+            off += len - ret;                                          // Residual bytes
         }
         AUDIT printk("%s: Thread with PID %d has completed the read operation ...", MOD_NAME, current->pid);
         ret = len - ret;
@@ -381,7 +383,14 @@ asmlinkage long sys_invalidate_data(int offset)
         goto exit;
     }
     blk = (struct dev_blk *)bh->b_data;
-    if (blk != NULL)
+    if (blk == NULL){
+        // Releasing the write lock ...
+        spin_unlock((&sh_data.write_lock));
+        printk("%s: Error in retrieving b_data from struct buffer_head", MOD_NAME);
+        ret = -ENODATA;
+        goto exit;
+    }
+    else 
     {
         the_metadata = set_invalid(the_block->metadata);
         memcpy(&(blk->metadata), &the_metadata, MD_SIZE - POS_SIZE);

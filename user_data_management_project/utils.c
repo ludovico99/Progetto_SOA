@@ -283,12 +283,10 @@ void print_reverse(struct message *tail)
 Parameters:
 struct message*: A pointer to the head of the double linked list.
 int pos: An integer representing the value to be searched*/
-struct message *lookup_by_pos(struct message *head, struct message *tail, int pos)
+struct message *lookup_by_pos(struct message *head, int pos)
 {
 
     struct message *curr = head;
-
-    // if (tail->position < pos) return NULL;
 
     while (curr != NULL && curr->position < pos)
     {

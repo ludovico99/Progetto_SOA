@@ -9,7 +9,7 @@ Return Value:
 Returns the number of bytes read upon successful execution, otherwise returns an appropriate error code.*/
 static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
 {
-    int str_len = 0, index;
+    int str_len = 0, index, size = 0;
     unsigned long my_epoch;
     struct blk_element *the_block;
     struct buffer_head *bh = NULL;
@@ -49,8 +49,12 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     if (my_off % BLK_SIZE != 0)
     { // It means that he wants to read residual bytes of the same block
 
-        // The block concurrently has been invalidated...
-        if (the_message->curr == NULL || the_message->curr->elem == NULL || the_message->curr->prev->next != the_message->curr) goto release_token;
+        /* The block concurrently has been invalidated: 
+            - the->message->curr == NULL is a consistency check
+            - the->message->curr->prev == NULL means that the writer released the buffer
+            - the_message->curr->prev->next != the_message->curr means that the writer has linearized the invalidation
+        */
+        if (the_message->curr == NULL || the_message->curr->prev == NULL || the_message->curr->prev->next != the_message->curr) goto release_token;
         else
             goto read_same_block;
     }
@@ -104,22 +108,24 @@ read_same_block:
     if (blk != NULL)
     {
         str_len = get_length(blk->metadata); // str_len is initialized to the message length
-        offset = my_off % BLK_SIZE;          // Residual bytes
-
+        offset = my_off % BLK_SIZE; // Residual bytes
         AUDIT
         {
             printk("%s: Block at index %d has message with length %d", MOD_NAME, get_index(block_to_read), str_len);
             printk("%s: Reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, get_index(block_to_read), offset, str_len - offset);
         }
+        
         if (offset == 0)
-            len = str_len;
+            size = str_len;
         else if (offset < str_len)
-            len = str_len - offset;
+            size = str_len - offset;
         else
-            len = 0;
+            size = 0;
 
-        // Copy len bytes of message into the user buffer
-        ret = copy_to_user(buf, blk->data + offset, len);
+        if (len < size) size = len; //If the bytes to read is less than size then copy_to_user will read len bytes
+        
+        // Copy size bytes of message into the user buffer
+        ret = copy_to_user(buf, blk->data + offset, size);
 
         // Computing the position in the valid messages list to be read
         // I try also to read an eventually inserted block: before the next read begins, a writer may have written other blocks.
@@ -127,9 +133,9 @@ read_same_block:
             the_message->position = the_message->curr->position + 1;
         // Unable to copy to the user len bytes
         else
-            my_off += len - ret;
+            my_off += size - ret;
 
-        ret = len - ret;
+        ret = size - ret;
     }
     else
         my_off += BLK_SIZE;

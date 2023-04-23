@@ -12,6 +12,7 @@
 
 char **data;
 int num_params = 0;
+pthread_barrier_t barrier;
 
 #ifdef MULTI_THREAD
 void *my_thread(void *index)
@@ -113,6 +114,7 @@ void *same_blk(void *index)
     else
         arg = INVALIDATE_DATA;
 
+    pthread_barrier_wait(&barrier);
     for (i = 0; i < REQS; i++)
     {
         switch (arg)
@@ -204,6 +206,7 @@ int main(int argc, char **argv)
     num_params = argc - 2; // Total offsets passed as arguments
     AUDIT printf("num params: %d \n", num_params);
     AUDIT printf("Spawning %d threads ...\n", NUM_THREADS);
+    pthread_barrier_init(&barrier, NULL, NUM_THREADS);
     for (i = 0; i < NUM_THREADS; i++)
     {
         array[i] = i;
@@ -215,6 +218,7 @@ int main(int argc, char **argv)
 
     for (i = 0; i < NUM_THREADS; i++)
         pthread_join(tids[i], NULL);
+    pthread_barrier_destroy(&barrier);
 #endif
     return 0;
 }

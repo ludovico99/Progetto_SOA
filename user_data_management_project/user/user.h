@@ -3,7 +3,7 @@
 
 #define NUM_THREADS 12
 #define NBLOCKS 20
-#define REQS 10
+#define REQS 2
 
 #ifdef MULTI_THREAD
 
