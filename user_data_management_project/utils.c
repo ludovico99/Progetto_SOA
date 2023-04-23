@@ -283,7 +283,7 @@ void print_reverse(struct message *tail)
 Parameters:
 struct message*: A pointer to the head of the double linked list.
 int pos: An integer representing the value to be searched*/
-struct message *search(struct message *head, struct message *tail, int pos)
+struct message *lookup_by_pos(struct message *head, struct message *tail, int pos)
 {
 
     struct message *curr = head;
@@ -302,7 +302,7 @@ struct message *search(struct message *head, struct message *tail, int pos)
 Parameters:
 struct message*: A pointer to the head of the double linked list.
 int index: An integer representing the index in the device driver to be searched*/
-struct message *lookup(struct message *head, int index)
+struct message *lookup_by_index(struct message *head, int index)
 {
 
     struct message *curr = head;

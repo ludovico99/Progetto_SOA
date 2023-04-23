@@ -8,8 +8,8 @@ extern void insert_sorted(struct message **, struct message **,struct message *,
 extern void free_list(struct message*);
 extern void free_array(struct blk_element **);
 extern void delete(struct message**,struct message **, struct message*);
-extern struct message *search(struct message *,struct message *, int );
-extern struct message *lookup(struct message *,  int);
+extern struct message *lookup_by_pos(struct message *, int );
+extern struct message *lookup_by_index(struct message *,  int);
 void quickSort(struct message *, struct message *);
 
 

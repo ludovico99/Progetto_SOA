@@ -250,7 +250,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     my_epoch = __sync_fetch_and_add(&sh_data.epoch, 1);
 
     // Searching the message with the specified offset in the valid messages list
-    the_message = lookup(sh_data.first, offset);
+    the_message = lookup_by_index(sh_data.first, offset);
     if (the_message == NULL)
     {
         printk("%s: The message is invalid", MOD_NAME);

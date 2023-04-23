@@ -23,7 +23,7 @@ sudo make install_the_usctm
 3. [File system](#file-system)
 4. [System calls](#implementazione-delle-system-calls)
 5. [File_operations](#implementazione-delle-file_operations-supportate-dal-device-driver)
-6. [Linearizzabilità e RCU](#linearizzabilità-e-RCU)
+6. [Linearizzabilità e RCU](#linearizzabilità-e-rcu)
 7. [User code](#codice-utente)
 8. [Compilazione](#compilazione-ed-esecuzione)
 
@@ -111,7 +111,7 @@ Di seguito vengono spiegate in dettaglio le due mount() e kill_sb() precedenti:
              4. Al termine di ogni ciclo viene invocata la brelse sull'attuale buffer_head pointer. 
 
     4. Infine, si controlla se c'è stato qualche errore durante l'esecuzione. In questo caso mounted viene riportato a 0 poichè la mount non ha avuto successo. In questo modo, se la mount dovesse fallire, è possibile rieseguirla. [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L293)
-
+>**NOTE**: L'operazione di mount in questo caso ha costo O(n^2). Poichè per ogni blocco da leggere è richiesto un inserimento sorted. Per evitare questo problema è presente del [codice](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L288), in utils.c, che realizza il quick sort a partire da una lista di elementi non ordinata. In questo modo il costo è O(n*logn). Il problema in questo caso è che il quick sort è implementato in modo ricorsivo. Di conseguenza, in presenza di un numero elevato di blocchi validi lo stack di livello kernel potrebbe esaurirsi. Ovviamente questo è un tradeoff tra prestazioni e utilizzo di memoria. Attualmente la versione con il quick sort è commentata.
 
 - static void [userdatafs_kill_superblock](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L98) (struct super_block *s): è la funzione che viene invocata nella fase di unmounting del file system. È caratterizzata dai seguenti passi:
     1. Come sopra, per prima cosa, un solo thread porta a 0 il valore dell'intero mounted. In questo modo è possibile fare nuovamente il mounting in futuro. [Vedere qui](/user_data_management_project/file_system/userdatamgmt_fs_src.c#L114)
@@ -163,23 +163,23 @@ Andiamo ad analizzare più in dettaglio le system calls sys_put_data, sys_get_da
     7. In modo sincrono o asincrono i cambiamenti verranno riportati sul device. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L391)
     8. Si procede ad aggiornare la lista dei messaggi validi andando ad eliminare l'elemento da invalidare dalla lista. Ciò è fatto con costo costante O(1) in seguito all'utilizzo di una lista doppiamente collegata. 
     La delete è caratterizzata dai seguenti passi: 
-        1. Se l'elemento da eliminare è la testa allora viene aggiornato head in modo che punti ad head->next. Ciò è visibile ai lettori immediatamente. Tutti i lettori d'ora in poi vedranno un nuovo elemento che head della lista dei messaggi validi. [Vedere qui](/user_data_management_project/utils.c#L225).
-        2. Se l'elemento da eliminare è in mezzo alla lista allora viene sganciato andando ad aggiornare il puntatore a next del precedecessore. Come già detto in precedenza, per costruzione quest'operazione è il punto di linearizzazione per i lettori. Infine, viene aggiornato il puntatore prev del successore. [Vedere qui](/user_data_management_project/utils.c#L231).
-        3. Se l'elemento è la coda allora viene aggiornata in modo che punti al predecessore dell'elemento. [Vedere qui](/user_data_management_project/utils.c#L243).
+        1. Se l'elemento da eliminare è la testa allora viene aggiornato head in modo che punti ad head->next. Ciò è visibile ai lettori immediatamente. Tutti i lettori d'ora in poi vedranno un nuovo elemento che head della lista dei messaggi validi. Viene anche aggiornato il prev del successore del nodo da eliminare. [Vedere qui](/user_data_management_project/utils.c#L225). 
+        2. Se l'elemento da eliminare è in mezzo alla lista allora viene sganciato andando ad aggiornare il puntatore a next del predecessore. Come già detto in precedenza, per costruzione quest'operazione è il punto di linearizzazione per i lettori. Infine, viene aggiornato il puntatore prev del successore. [Vedere qui](/user_data_management_project/utils.c#L231).
+        3. Se l'elemento è la coda allora viene aggiornato il next del predecessore in modo che punti a NULL (linearizzazione). Infine, viene aggiornata la coda. [Vedere qui](/user_data_management_project/utils.c#L243).
     9. Viene individuata la nuova epoca, viene aggiornato atomicamente il puntatore all'epoca corrente e infine si va in attesa del termine del grace period sull'epoca precedente. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L422)
     10. Al termine dell'epoca viene rilasciato lo spinlock, viene liberata la memoria del buffer e decrementato l'usage counter. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L438)
 
 
 ## Implementazione delle file_operations supportate dal device driver: 
 Andiamo ad analizzare più in dettaglio le file_operations open, read e close:
-- int [open](/user_data_management_project/userdatamgmt_driver.c#L173) (struct inode*, struct file*): 
-    1. Innanzitutto, si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L185)
-    2. Se la modalità di apertura del file è in write mode, si ritorna il codice d'errore (Read-only FS). [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L190)
-    3. Si rilascia un gettone sull'usage counter globale. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L196)
+- int [open](/user_data_management_project/userdatamgmt_driver.c#L170) (struct inode*, struct file*): 
+    1. Innanzitutto, si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L182)
+    2. Se la modalità di apertura del file è in write mode, si ritorna il codice d'errore (Read-only FS). [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L187)
+    3. Si rilascia un gettone sull'usage counter globale. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L193)
     4. Infine, si alloca e inizializza la struttura [current_message](/user_data_management_project/userdatamgmt_driver.h#L48) che memorizza la posizione (nella lista doppiamente collegata), il puntatore  del messaggio corrente e l'offset in lettura nell'attuale sessione di I/O.
-    Il campo offset è posto a 0, position a -1 e curr a NULL. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L197)
+    Il campo offset è posto a 0, position a -1 e curr a NULL. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L194)
 
-- int [release](/user_data_management_project/userdatamgmt_driver.c#L153)(struct inode*, struct file*):
+- int [release](/user_data_management_project/userdatamgmt_driver.c#L148)(struct inode*, struct file*):
     1. Innanzitutto, si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L159)
     2. Si libera la struct current_message dell'attuale sessione di I/O. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L165)
     3. Si decrementa l'usage counter globale. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L166)
@@ -188,7 +188,7 @@ Andiamo ad analizzare più in dettaglio le file_operations open, read e close:
     1. Innanzitutto, si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L26)
     2. Si verifica che la open almeno una open è stata invocata. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L31)
     3. Si verfica che ci siano messaggi validi e se l'offset è minore della dimensione del file. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L36)
-    4. Si aggiunge 1 a numero di lettori nell'epoca corrente ([Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L47S)).
+    4. Si aggiunge 1 a numero di lettori nell'epoca corrente ([Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L47)).
     5. Si verifica se l'offset sia un multiplo di BLK_SIZE. Se il resto con BLK_SIZE è diverso da 0, significa che ci sono dei bytes del blocco precedenti che non sono stati consegnati al lettore. Di conseguenza, a meno che in concorrenza, tra una lettura e la successiva il blocco sia stato invalidato, si continua a leggere il blocco corrente. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L49)
     6. Se è la prima lettura, cioè è successiva alla open e offset è zero allora il messaggio corrente è il primo elemento della lista dei messaggi validi. Altrimenti il prossimo messaggio è quello la cui posizione è successiva all'elemento letto in precedenza. In quest'ultimo caso si fa una ricerca lineare nella lista e si ritorno il blocco la cui posizione è maggiore o uguale di quella in input (individuata nella lettura precedente). [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L58)
     7. Una volta individuato il blocco da leggere, si calcola l'offset e si accede al device. [Vedere qui](/user_data_management_project/userdatamgmt_driver.c#L82). 
@@ -200,7 +200,33 @@ Andiamo ad analizzare più in dettaglio le file_operations open, read e close:
 > **NOTE:** I controlli iniziali nella dev_read sono stati introdotti poichè é richiesto che venga letto il blocco che non è stato invalidato prima dell'accesso in lettua al blocco corrispondente.
 
 ## Linearizzabilità e RCU:
-In un approccio RCU i lettori eseguono in concorrenza (sia tra loro sia rispetto agli scrittori), senza l'utilizzo dei lock, mentre gli scrittori (sys_put_data e sys_invalidate_data) per poter operare sulla struttura dati condivisa devono acquisire un lock in scrittura. Gli scrittori linearizzano i cambiamenti, rendendoli visibili ai reader atomicamente. Nel caso dell'invalidazione, per evitare il rilascio di un elemento che può essere acceduto ancora da lettori standing, la free del messaggio corrispondente avviene solo dopo che il grace period è terminato ([Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L431)). Il grace period termina quando tutti i lettori che hanno letto la precedente versione della struttura dati condivisa hanno rilasciato un token nell'entry corrispondente dell'array standing.\
+In un approccio RCU i lettori eseguono in concorrenza (sia tra loro sia rispetto agli scrittori), senza l'utilizzo dei lock, mentre gli scrittori (sys_put_data e sys_invalidate_data) per poter operare sulla struttura dati condivisa devono acquisire un lock in scrittura. Gli scrittori linearizzano i cambiamenti, rendendoli visibili ai reader atomicamente. Nel caso dell'invalidazione, per evitare il rilascio di un elemento che può essere acceduto ancora da lettori standing, la free del messaggio corrispondente avviene solo dopo che il grace period è terminato ([Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L431)). Il grace period termina quando tutti i lettori che hanno letto la precedente versione della struttura dati condivisa hanno rilasciato un token nell'entry corrispondente dell'array standing.     
+
+Nella sezione [data structures](/README.md#L74) è presente una descrizione dettagliata delle variabili di sincronizzazione utilizzate. I lettori (in sys_get_data e dev_read) vanno ad aumentare di 1 il contatore epoch, che rappresenta il numero di lettori nell'epoca corrente e al termine vanno a rilasciare un "token" nell'entry dell'array standing. L'indice in standing è il bit più significativo di epoch. Gli scrittori, invece, acquisicono il lock in scrittura per poter modificare la struttura condivisa. A differenza dell'inserimento, l'invalidazione va a cambiare l'epoca corrente e va in attesa (in polling) che tutti i lettori dell'epoca corrente (coloro che hanno letto la struttura dati prima del punto di materializzazione dell'invalidazione) abbiamo rilasciato il loro token. Inoltre, nella mount viene creato un kernel thread che va a simulare un'operazione di aggiornamento ed update dell'epoca corrente affinchè il contatore epoch non vada in overflow (se il numero di lettori sull'epoca corrente è maggiore di 2^63).
+
+Nel mio caso la struttura dati condivisa è una lista doppiamente collegata per la quale è mantenuto un puntatore alla testa e alla coda. Inoltre, ogni elemento della lista dei messaggi validi ha un riferimento ai metadati all'interno dell'array e vicerversa. Per i readers è necessario che ci sia un solo punto di materializzazione delle modifiche alla struttura dati condivisa. Gli scrittori hanno invece un lock in scrittura di conseguenza i cambiamenti sono visibili al completamento dell'operazione. Nelle scritture dobbiamo modificare i seguenti campi:
+- puntatori prev, next e elem in struct [message](/user_data_management_project/userdatamgmt_driver.h#L36) 
+- puntatore a msg e i metadati in struct [blk_element](/user_data_management_project/userdatamgmt_driver.h#L29)         
+
+Come eseguire queste modifiche in modo che per i lettori l'aggiornamento sia un unicum atomico? 
+Andiamo ad analizzare prima i lettori:
+- ssize_t [read](/user_data_management_project/userdatamgmt_driver.c#L1) (struct file*, char __user*, size_t, loff_t*): In questa operazione il lettore accede alla lista dei messaggi validi andando a scorrerla unidirezionalmente dalla testa alla coda. Di conseguenza, la linearizzazione si ha nel momento in cui viene aggiornato il next dell'elemento in coda nel caso di put_data e il next del predecessore del nodo da eliminare nel caso di invalidate_data. La lettura non accede all'array dei metadati. In questo modo si ha solo un'operazione linearizzante.
+- int [sys_get_data](/user_data_management_project/userdatamgmt_sc.c#L204) (int offset, char * destination, size_t size): Nella sys_get_data, come sopra, la struttura dati condivisa con i messaggi validi è acceduta unidirezionalmente a partire dalla testa. Anche in questo caso non si accede all'array dei metadati. Così facendo la linearizzazione può essere raggiunta.
+
+Una volta analizzati i lettori è possibile approfondire maggiormente il comportamento degli scrittori:
+- int [sys_put_data](/user_data_management_project/userdatamgmt_sc.c#L3)(char* source, size_t size): Sappiamo che la put_data va ad aggiungere un elemento in coda alla lista doppiamente collegata. Prima di aggiornare il puntatore next del predecessore e quindi rendere l'elemento visbiile, è possibile inizializzare il messaggio da inserire:
+    - Si imposta next a NULL poichè sarà l'ultimo elemento della lista.
+    - Si aggancia il messaggio al blocco corrispondente nell'array. 
+    - Si imposta prev al predecessore, cioè all'attuale coda. 
+    - Si aggancia il blocco al nuovo messaggio (solo un altro scrittore accede a questo campo all'interno dell'array e sappiamo che tutti gli scrittori sono sincronizzati).
+Una volta impostati i precedenti campi è possibile agganciare il nuovo elemento andando a cambiare il next del predecessore. D'ora in poi tutti i lettori che accedono alla struttura vedranno questo elemento. 
+- int [sys_invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L301) (int offset): Sappiamo che l'invalidate_data, invece, va a sganciare un elemento all'interno della lista dei messaggi validi.                     
+Come rendere quest' operazione atomica per i lettori ?
+    - Se l'elemento da eliminare è la testa allora viene aggiornato head in modo che punti ad head->next. Ciò è visibile ai lettori immediatamente. Tutti i lettori d'ora in poi vedranno un nuovo elemento che head della lista dei messaggi validi e andranno a scorrere la lista a partire dal prossimo elemento. Il predecessore è NULL, quindi non viene aggiornato. Infine, il prev del successore del nodo da eliminare viene portato a NULL.
+    - Se l'elemento da eliminare è in mezzo alla lista allora viene sganciato andando ad aggiornare il puntatore a next del predecessore. Come già detto in precedenza, per costruzione quest'operazione è il punto di linearizzazione per i lettori. Infine, viene aggiornato il puntatore prev del successore. Attraverso il primo swap di pointers, tutti i lettori d'ora in poi non vedranno l'elemento da eliminare.
+    - Se l'elemento da eliminare è la coda allora viene aggiornato il next del predecessore in modo che punti a NULL. Infine, viene aggiornata la coda. Questo può essere fatto poichè la tail non è acceduta dai lettori, ma soltanto dagli scrittori.
+Di conseguenza, in tutti e tre i casi, è stata individuata un'operazione che i lettori vedono atomicamente. Nel loro caso è il punto di linearizzazione. 
+
 
 ## Codice Utente:
 All' interno del progetto sono presenti due sorgenti user level:
@@ -215,7 +241,7 @@ All' interno del progetto sono presenti due sorgenti user level:
     - [gets](/user_data_management_project/user/Makefile#L29): Vengono acquisiti tutti i messaggi utenti in concorrenza dai threads creati. Ogni thread è responsabile dei blocchi individuati dal loro indice + NTHREADS *i.
     - [invalidations](/user_data_management_project/user/Makefile#L32): Vengono invalidati (da uno dei thread creati) tutti i blocchi (se non è già invalido) passati come argomento
     - [multi-ops](/user_data_management_project/user/Makefile#L36): Il 66% dei threads creati sono readers, il restante sono writers. In base al loro indice, ogni thread esegue una delle tre system call sul blocco passato in input di sua competenza. 
-    - [same-block-ops](/user_data_management_project/user/Makefile#L40): Il 66% dei threads creati sono readers, il restante sono writers. Per un numero di volte pari REQS, ogni thread (in base al suo id) invoca una system call sullo stesso blocco. Ho usato questa modalià per valutare l'interleave di writers e readers e il corretto funzionamento dell'approccio RCU.
+    - [same-block-ops](/user_data_management_project/user/Makefile#L40): Il 66% dei threads creati sono readers, il restante sono writers. Per un numero di volte pari REQS, ogni thread (in base al suo id) invoca una system call sullo stesso blocco. Ho usato questa modalià per valutare l'interleave di writers e readers e il corretto funzionamento dell'approccio RCU. 
 
 ## Compilazione ed esecuzione:
 La fase di compilazione è caratterizzata dai seguenti passi:

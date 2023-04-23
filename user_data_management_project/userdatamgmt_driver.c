@@ -65,7 +65,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     else
     {
         AUDIT printk("%s: Computing the following block to read...", MOD_NAME);
-        the_message->curr = search(sh_data.first, sh_data.last, the_message->position);
+        the_message->curr = lookup_by_pos(sh_data.first, the_message->position);
         if (the_message->curr == NULL)
         { // There are no other valid messages
             my_off = file_size;
