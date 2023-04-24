@@ -2,7 +2,7 @@
 #define _USER_H
 
 #define NUM_THREADS 12
-#define NBLOCKS 20
+#define NBLOCKS 40
 #define REQS 2
 
 #ifdef MULTI_THREAD

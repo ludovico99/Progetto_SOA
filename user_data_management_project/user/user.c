@@ -15,6 +15,60 @@ int num_params = 0;
 pthread_barrier_t barrier;
 
 #ifdef MULTI_THREAD
+
+void *multi_ops(void *index)
+{
+    char buffer[SIZE];
+    char write_buff[SIZE] = "Wathever content you would like.\n";
+    int my_id = *(int *)index;
+    int offset = 0;
+    int ret = -1;
+    int i = 0;
+    int arg = 0;
+
+    // 66 % READERS, 33% WRITERS
+
+    if (my_id <= (NUM_THREADS * 2) / 3)
+        arg = GET_DATA;
+    else if (my_id >= (NUM_THREADS * 2) / 3 + NUM_THREADS / 6)
+        arg = PUT_DATA;
+    else
+        arg = INVALIDATE_DATA;
+
+    srand(time(NULL));
+
+    pthread_barrier_wait(&barrier);
+    for (i = 0; i < REQS; i++)
+    {
+        offset = rand() % NBLOCKS;
+        switch (arg)
+        {
+        case PUT_DATA:
+            ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
+            if (ret >= 0)
+                printf("%s written into block at offset %d\n", write_buff, ret);
+            break;
+        case GET_DATA:
+            memset(buffer, 0, SIZE);
+            ret = syscall(GET_DATA, offset, buffer, SIZE);
+            if (ret >= 0)
+                printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
+            break;
+        case INVALIDATE_DATA:
+            ret = syscall(INVALIDATE_DATA, offset);
+            if (ret >= 0)
+                printf("The block at index %d invalidation ended with code %d\n", offset, ret);
+            break;
+        default:
+            printf("Syscall number inserted is invalid");
+            break;
+        }
+        if (ret < 0)
+            printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
+    }
+    pthread_exit(0);
+}
+
 void *my_thread(void *index)
 {
 
@@ -32,18 +86,7 @@ void *my_thread(void *index)
 
     arg = strtol(data[1], NULL, 10);
 
-    // 66 % READERS, 33% WRITERS
-    if (arg == MULTI_OPS)
-    {
-        if (my_id <= (NUM_THREADS * 2) / 3)
-            arg = GET_DATA;
-        else if (my_id >= (NUM_THREADS * 2) / 3 + NUM_THREADS / 6)
-            arg = PUT_DATA;
-        else
-            arg = INVALIDATE_DATA;
-    }
-
-    //AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
+    // AUDIT printf("The thread %d is executing the system call with NR: %d\n", my_id, arg);
 
     if (arg == PUT_DATA)
     {
@@ -81,7 +124,7 @@ void *my_thread(void *index)
                 printf("The block at index %d invalidation ended with code %d\n", offset, ret);
             break;
         default:
-            printf("Syscall number inserted is invalid");
+            printf("Syscall number inserted is invalid\n");
             break;
         }
         if (ret < 0)
@@ -136,11 +179,11 @@ void *same_blk(void *index)
                 printf("The block at index %d invalidation ended with code %d\n", offset, ret);
             break;
         default:
-            printf("Syscall number inserted is invalid");
+            printf("Syscall number inserted is invalid\n");
             break;
         }
         if (ret < 0)
-             printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
+            printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
     }
     pthread_exit(0);
 }
@@ -210,10 +253,12 @@ int main(int argc, char **argv)
     for (i = 0; i < NUM_THREADS; i++)
     {
         array[i] = i;
-        if (arg != SAME_BLOCK_OPS)
-            pthread_create(&tids[i], NULL, my_thread, (void *)&array[i]);
-        else
+        if (arg == SAME_BLOCK_OPS)
             pthread_create(&tids[i], NULL, same_blk, (void *)&array[i]);
+        else if (arg == MULTI_OPS)
+            pthread_create(&tids[i], NULL, multi_ops, (void *)&array[i]);
+        else
+            pthread_create(&tids[i], NULL, my_thread, (void *)&array[i]);
     }
 
     for (i = 0; i < NUM_THREADS; i++)

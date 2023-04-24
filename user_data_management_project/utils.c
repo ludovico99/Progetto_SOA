@@ -26,8 +26,9 @@ static int house_keeper(void *unused)
         return -ENODEV;
 redo:
     msleep(PERIOD);
+    AUDIT printk("%s: house keeper re-started\n",MOD_NAME);
     // Acquires the spin lock associated with the 'write_lock' attribute of the 'sh_data' structure using spin_lock() function.
-    spin_lock(&sh_data.write_lock);
+    spin_lock(&(sh_data.write_lock));
     // Updates the 'updated_epoch' variable by assigning MASK if 'next_epoch_index' attribute of the 'sh_data' structure is non-zero, else assigns 0 to it.
     updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
     // Increments the value of 'next_epoch_index' attribute of the 'sh_data' structure by 1 and takes the modulus 2 of it.
@@ -40,7 +41,7 @@ redo:
     // Computes the value of 'grace_period_threads' as the value of 'last_epoch' without the least significant bit.
     grace_period_threads = last_epoch & (~MASK);
 
-    AUDIT printk("house keeping: waiting grace-full period (target index is %ld)\n", grace_period_threads);
+    AUDIT printk("%s: house keeping: waiting grace-full period (target index is %ld)\n",MOD_NAME, grace_period_threads);
     // Calls wait_event_interruptible() function which waits on the 'wait_queue' until 'standing[index]' of the 'sh_data' structure is greater than or equal to 'grace_period_threads' and can be interrupted by a signal.
     wait_event_interruptible(wait_queue, sh_data.standing[index] >= grace_period_threads);
     // Sets 'standing[index]' attribute of the 'sh_data' structure to zero.

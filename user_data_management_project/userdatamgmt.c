@@ -36,10 +36,10 @@
 #include "userdatamgmt.h"
 #include "lib/include/scth.h"
 
-//Contains the implemented system call
-#include "userdatamgmt_sc.c"
 //Contains the file system type
 #include "file_system/userdatamgmt_fs_src.c"
+//Contains the implemented system call
+#include "userdatamgmt_sc.c"
 //Contains the implemented file_operations
 #include "userdatamgmt_driver.c"
 

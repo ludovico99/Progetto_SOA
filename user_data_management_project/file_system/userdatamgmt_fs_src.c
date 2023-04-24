@@ -12,6 +12,8 @@ static struct super_operations my_super_ops = {};
 
 static struct dentry_operations my_dentry_ops = {};
 
+DECLARE_WAIT_QUEUE_HEAD(unmount_queue); // This variable is a wait queue for threads that are still executing.
+
 int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
 {
 
@@ -102,7 +104,6 @@ s
 This argument is a pointer to the super_block structure.*/
 static void userdatafs_kill_superblock(struct super_block *s)
 {
-    DECLARE_WAIT_QUEUE_HEAD(unmount_queue); // This variable is a wait queue for threads that are waiting for unmount to complete.
     int mnt = -1;
     int offset = 0;
     unsigned int pos = 0;

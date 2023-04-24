@@ -1,5 +1,6 @@
 #define EXPORT_SYMTAB
 
+DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
 /*This function retrieves data from the device at a given offset and copies it to the user buffer.
 
 Parameters:
@@ -198,6 +199,7 @@ free:
 fetch_and_sub:
     // Atomically subtracts 1 from the bdev_md.count variable and returns the new value.
     __sync_fetch_and_sub(&(bdev_md.count), 1);
+    wake_up_interruptible(&unmount_queue); 
     return ret;
 }
 
@@ -236,6 +238,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     {
         printk("%s: The device is not mounted", MOD_NAME);
         __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
+        wake_up_interruptible(&unmount_queue); 
         return -ENODEV;
     }
 
@@ -245,6 +248,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     {
         printk("%s: The offset is not valid", MOD_NAME);
         __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
+        wake_up_interruptible(&unmount_queue); 
         return -EINVAL;
     }
 
@@ -255,7 +259,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     the_message = lookup_by_index(sh_data.first, offset);
     if (the_message == NULL)
     {
-        printk("%s: The message is invalid", MOD_NAME);
+        printk("%s: The message at index %d is invalid", MOD_NAME, offset);
         ret = -ENODATA;
         goto exit;
     }
@@ -295,8 +299,11 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     brelse(bh);
 exit:
     index = (my_epoch & MASK) ? 1 : 0;
-    __sync_fetch_and_add(&(sh_data.standing[index]), 1);
+    __sync_fetch_and_add(&(sh_data.standing[index]), 1);//Releasing a token in the correct epoch counter
+    wake_up_interruptible(&invalidate_queue); 
+
     __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
+    wake_up_interruptible(&unmount_queue); //tell poll that data is ready
     return ret;
 }
 
@@ -329,8 +336,6 @@ asmlinkage long sys_invalidate_data(int offset)
     unsigned long grace_period_threads;
     int index;
     int ret = 0;
-
-    DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
 
     __sync_fetch_and_add(&(bdev_md.count), 1); // The unmount operation is not permitted
     AUDIT printk("%s: The thread %d is executing SYS_INVALIDATE_DATA\n", MOD_NAME, current->pid);
@@ -453,6 +458,7 @@ asmlinkage long sys_invalidate_data(int offset)
     }
 exit:
     __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
+    wake_up_interruptible(&unmount_queue); 
     return ret;
 }
 

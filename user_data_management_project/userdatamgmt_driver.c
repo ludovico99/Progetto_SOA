@@ -146,6 +146,8 @@ release_token:
     index = (my_epoch & MASK) ? 1 : 0;
     __sync_fetch_and_add(&(sh_data.standing[index]), 1);
 
+    wake_up_interruptible(&invalidate_queue);
+
     *off = my_off;
     the_message->offset = my_off;
     return ret;
@@ -170,6 +172,7 @@ static int dev_release(struct inode *inode, struct file *filp)
 
     kfree(filp->private_data);
     __sync_fetch_and_sub(&(bdev_md.count), 1);
+    wake_up_interruptible(&unmount_queue); 
     return 0;
 }
 
