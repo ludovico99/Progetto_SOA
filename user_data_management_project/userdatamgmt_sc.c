@@ -298,6 +298,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     }
     brelse(bh);
 exit:
+
     index = (my_epoch & MASK) ? 1 : 0;
     __sync_fetch_and_add(&(sh_data.standing[index]), 1); // Releasing a token in the correct epoch counter
     wake_up_interruptible(&invalidate_queue);
@@ -374,7 +375,7 @@ asmlinkage long sys_invalidate_data(int offset)
         ret = -ENODATA;
         goto exit;
     }
-    // If the device driver update is properly set, the RCU structure update can start
+    //The RCU structure update can start...
     AUDIT printk("%s: Thread with PID %d is deleting the message from valid messages list...", MOD_NAME, current->pid);
 
     // Get the pointer to the message linked to the block that has to be invalidated ...

@@ -51,15 +51,15 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
 
         /* The block concurrently has been invalidated: 
             - the->message->curr == NULL is a consistency check
-            - the->message->curr->prev == NULL means that the writer released the buffer
+            - the_message->curr->prev == NULL means that the writer released the buffer
             - the_message->curr->prev->next != the_message->curr means that the writer has linearized the invalidation
         */
-        if (the_message->curr == NULL || the_message->curr->prev == NULL || the_message->curr->prev->next != the_message->curr) goto release_token;
-        else
-            goto read_same_block;
+        if (the_message-> curr != NULL && the_message->curr == sh_data.first) goto read_same_block;
+        else if (the_message->curr == NULL || the_message->curr->prev == NULL || the_message->curr->prev->next != the_message->curr) goto release_token;
+        else goto read_same_block;
     }
 
-    if (the_message->position == INVALID_POSITION && my_off == 0)
+    if (the_message->position == INVALID_POSITION)
     // It means that it's the first read of the I/O session and want to read from offset 0. I assume that he wants to read all the data
     {
         AUDIT printk("%s: Reading the first block...", MOD_NAME);
