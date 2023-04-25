@@ -104,12 +104,13 @@ s
 This argument is a pointer to the super_block structure.*/
 static void userdatafs_kill_superblock(struct super_block *s)
 {
-    int mnt = -1;
+    int mnt = -1, i = 0, pos = 0;
     int offset = 0;
-    unsigned int pos = 0;
+    uint16_t the_metadata = 0;
     struct buffer_head *bh;
     struct dev_blk *the_block;
     struct message *curr = sh_data.first;
+
     /*fetches the value of the mounted flag using an atomic compare-and-swap operation, setting the flag to 0 if it was previously 1.
     If the mounted flag was already 0, it prints an error message and returns.*/
     mnt = __sync_val_compare_and_swap(&mount_md.mounted, 1, 0);
@@ -123,11 +124,20 @@ static void userdatafs_kill_superblock(struct super_block *s)
     /*puts the current process to sleep until the condition (bdev_md.count == 0) is true or an interrupt is received.*/
     wait_event_interruptible(unmount_queue, bdev_md.count == 0);
 
-    AUDIT printk("%s: Flushing to the device ordering of user messages ...", MOD_NAME);
+    AUDIT printk("%s: Flushing to the device some changes...", MOD_NAME);
 
+    // Filling the gaps between positions to avoid overflow
     while (curr != NULL)
     {
-        offset = get_offset(curr->index);
+
+        curr->position = pos;
+        curr = curr->next;
+        pos++;
+    }
+
+    for (i = 0; i < nblocks; i++)
+    {
+        offset = get_offset(i);
 
         bh = (struct buffer_head *)sb_bread((bdev_md.bdev)->bd_super, offset);
         if (!bh)
@@ -137,26 +147,26 @@ static void userdatafs_kill_superblock(struct super_block *s)
         }
         the_block = (struct dev_blk *)bh->b_data;
         if (the_block != NULL)
-        {
-            the_block->pos = pos;
+        { // If the block is valid it flushes the position in the device
+            if (get_validity(head[i]->metadata))
+                the_block->pos = head[i]->msg->position;
+
+            // If the block is valid it updates the metadata and set the position to -1 in the device
+            else
+            {
+                the_metadata = set_invalid(the_block->metadata);
+                memcpy(&(the_block->metadata), &the_metadata, MD_SIZE - POS_SIZE);
+                the_block->pos = INVALID_POSITION;
+            }
         }
-#ifndef SYNC_FLUSH
         // Sets the dirty bit of the bh structure and marks it as requiring writeback.
         mark_buffer_dirty(bh);
 
-        AUDIT printk("%s: Page-cache write back-daemon will eventually flush changes into the device", MOD_NAME);
-#else
-        if (sync_dirty_buffer(bh) == 0)
-        {
-            AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
-        }
-        else
-            printk("%s: Synchronous flush not succeded", MOD_NAME);
-#endif
+        AUDIT printk("%s: Page-cache write back-daemon will flush changes into the device", MOD_NAME);
+
         brelse(bh);
-        pos++;
-        curr = curr->next;
     }
+
     blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
     /*After all pending threads have finished, it calls kill_block_super() to release resources associated with the superblock.*/
     kill_block_super(s);
@@ -278,34 +288,33 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     message->position = the_block->pos;
 
                     // Insertion at the end of the valid messages double linked list
-                    insert_sorted(&sh_data.first, &sh_data.last, message,  message->position);
+                    insert_sorted(&sh_data.first, &sh_data.last, message, message->position);
 
                     /*decomment the previous line in case you want to use the Quick Sort*/
-                    //insert (&sh_data.first, &sh_data.last, message); 
+                    // insert (&sh_data.first, &sh_data.last, message);
                 }
             }
             brelse(bh);
         }
-    /*Quick sort has been implemented for performance reasons. To avoid too many recursions is commented and 
-    the iterative version with upper bound O(n^2) is preferred. */
-    //quickSort(sh_data.first, sh_data.last); //Sorting with upper bound O(n*log(n))
+        /*Quick sort has been implemented for performance reasons. To avoid too many recursions is commented and
+        the iterative version with upper bound O(n^2) is preferred. */
+        // quickSort(sh_data.first, sh_data.last); //Sorting with upper bound O(n*log(n))
 
     exit_2:
         if (unlikely(IS_ERR(ret)))
         {
-            free_array(head);
-            blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
+            free_array(head);                                   // freeing the array of metadata
+            free_list(sh_data.first);                           // freeing the double linked list
+            blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE); // blkdev_get_by_path has been invoked
         }
     }
 
-    if (unlikely(IS_ERR(ret))){
+    if (unlikely(IS_ERR(ret)))
         mount_md.mounted = 0;
-        asm volatile ("mfence");
-    }
+
     /*Finally, the function returns a pointer to the dentry structure if successful or an error pointer if unsuccessful.*/
     return ret;
 }
-
 
 // file system structure
 static struct file_system_type userdatafs_type = {
