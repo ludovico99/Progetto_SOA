@@ -129,7 +129,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     }
     the_dev_blk = (struct dev_blk *)bh->b_data;
     if (the_dev_blk == NULL){
-        printk("%s: Blk content is NULL", MOD_NAME);
+        printk("%s: dev_blk ptr is NULL", MOD_NAME);
         kfree(the_message);
         brelse(bh);
         ret = -EINVAL;
