@@ -21,12 +21,13 @@ sudo make install_the_usctm
 # Indice:
 1. [Introduzione](#introduzione)
 2. [Data structures](#strutture-dati)
-3. [File system](#file-system)
-4. [System calls](#implementazione-delle-system-calls)
-5. [File_operations](#implementazione-delle-file_operations-supportate-dal-device-driver)
-6. [Linearizzabilità e RCU](#linearizzabilità-e-rcu)
-7. [User code](#codice-utente)
-8. [Compilazione](#compilazione-ed-esecuzione)
+3. [Headers and defines](#headers-and-defines)
+4. [File system](#file-system)
+5. [System calls](#implementazione-delle-system-calls)
+6. [File_operations](#implementazione-delle-file_operations-supportate-dal-device-driver)
+7. [Linearizzabilità e RCU](#linearizzabilità-e-rcu)
+8. [User code](#codice-utente)
+9. [Compilazione](#compilazione-ed-esecuzione)
 
 ## Introduzione:
 Il progetto prevede la realizzazione di un linux device driver che implementi block level maintenance di messaggi utente. Un blocco del block-device ha taglia 4 KB e mantiene 6 (2 bytes per i metadati e 4 bytes per memorizzare la posizione all'interno della lista doppiamente collegata dei messaggi validi) bytes di dati utente e 4 KB - 6 bytes per i metadati. Si richiede l'implementazione di 3 system calls non nativamente supportate dal VFS:
@@ -90,6 +91,39 @@ Per la realizzazione del device driver sono state introdotte le seguenti struttu
 - struct [mount_metadata](/user_data_management_project/userdatamgmt_driver.h#L63): contiene le informazioni sul mounting del singlefile-FS.
     - int mounted: è una variabile che è settata atomicamente a 1 se il FS è montato e 0 altrimenti
     - char *mount_point: punto di ancoraggio a partire da /
+## Headers and defines:
+In questa sezione si va ad analizzare in dettaglio il contenuto dei vari headers presenti nel modulo. In totale ci sono 5 headers:
+- [userdatamgmt.h](/user_data_management_project/userdatamgmt.h): contiene tutte le defines utilizzate all'interno del modulo, i riferimenti alle strutture dati globali e le macro per operare sulle bitwise mask. Le principali defines sono:
+    - MOD_NAME: Stringa che rappresenta il nome del modulo
+    - AUDIT: Macro di debugging 
+    - BLK_SIZE: dimensione del blocco in bytes
+    - POS_SIZE: dimenensione in bytes di un intero
+    - MD_SIZE: dimensione in bytes per i metadati
+    - NBLOCKS: numero di blocchi gestibili dal software
+    - PERIOD: Tempo di attesa per l'house keeper
+    - Alcune define per operare sul validity bit e sui 12 bit (2^12 = 4KB) di lunghezza del messaggio.
+    - Riferimenti alle strutture dati condivise sh_data (RCU), bdev_md, mount_md e all'intero nblocks che rappresenta il numero di blocchi - 2 presenti sul device.
+
+- [userdatamgmt_fs.h](/user_data_management_project/file_system/userdatamgmt_fs_src.c): contiene le definizione delle strutture dati e le defines utilizzate nel singlefile-FS.
+
+- [userdatamgmt_driver.h](/user_data_management_project/userdatamgmt_driver.c): contiene le definizioni delle strutture dati utilizzate per la realizzazione del Block-level data management service. L'approfondimento sulle data structures utilizzate è presente nella [sezione precedente](/README.md#strutture-dati)
+
+- [utils.h](/user_data_management_project/utils.h): contiene i prototipi delle funzioni "ausiliarie" presenti in utils.c. Sono presenti i seguenti prototipi:
+    - void [init](/user_data_management_project/utils.c#L57)(struct rcu_data *): funzione di inizializzazione dei campi della struttura RCU
+    - void [insert](/user_data_management_project/utils.c#L92)(struct message **, struct message **, struct message *): inserimento in coda del messaggio in input
+    - void [insert_sorted](/user_data_management_project/utils.c#L114)(struct message **, struct message **, struct message *): inserimento ordinato del messaggio in base alla sua posizione
+    - void [free_list](/user_data_management_project/utils.c#L171)(struct message *): funzione per liberare la lista dei messaggi validi
+    - void [free_array](/user_data_management_project/utils.c#L190)(struct blk_element **): funzione per eseguire la free sull'array di metadati
+    - void [delete](/user_data_management_project/utils.c#L214)(struct message **, struct message **, struct message *): funzione per eliminare il messaggio in input dalla lista dei messaggi validi
+    - struct message *[lookup_by_pos](/user_data_management_project/utils.c#L287)(struct message *, int): lookup del messaggio in base alla sua posizione
+    - struct message *[lookup_by_index](/user_data_management_project/utils.c#L308)(struct message *, int): lookup del messaggio in base al suo indice
+    - void [quickSort](/user_data_management_project/utils.c#L376)(struct message *, struct message *): funzione che implementa il quick sort 
+    - void [print_list](/user_data_management_project/utils.c#L257)(struct message *): funzione di debugging per stampare la lista dei messaggi validi a partire dalla testa
+    - void [print_reverse](/user_data_management_project/utils.c#L272)(struct message *): funzione di debugging per stampare la lista dei messaggi validi a partire dalla coda
+
+- [user.h](/user_data_management_project/user/user.h): contiene le defines utilizzate all'interno del sorgente user.c.
+
+
 
 ## File system:
 Affinchè il device driver sia accessibile come file in un file system è necessario implementare le funzioni di mount e kill del superblocco (kill_sb). 
@@ -170,9 +204,9 @@ Andiamo ad analizzare più in dettaglio le system calls sys_put_data, sys_get_da
     5. Una volta acquisito il lock, si accede con costo 0(1) ai metadati del blocco ad indice pari all'offset in input. Se il blocco è già stato invalidato allora viene ritornato -ENODATA. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L360)
     6. Si procede ad aggiornare la lista dei messaggi validi andando ad eliminare l'elemento da invalidare dalla lista. Ciò, è fatto con costo costante O(1) in seguito all'utilizzo di una lista doppiamente collegata ([Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L378)). 
     La delete è caratterizzata dai seguenti passi: 
-        1. Se l'elemento da eliminare è la testa allora viene aggiornato head in modo che punti ad head->next. Ciò è visibile ai lettori immediatamente. Tutti i lettori d'ora in poi vedranno un nuovo elemento che head della lista dei messaggi validi. Viene anche aggiornato il prev del successore del nodo da eliminare. [Vedere qui](/user_data_management_project/utils.c#L225). 
-        2. Se l'elemento da eliminare è in mezzo alla lista allora viene sganciato andando ad aggiornare il puntatore a next del predecessore. Come già detto in precedenza, per costruzione quest'operazione è il punto di linearizzazione per i lettori. Infine, viene aggiornato il puntatore prev del successore. [Vedere qui](/user_data_management_project/utils.c#L231).
-        3. Se l'elemento è la coda allora viene aggiornato il next del predecessore in modo che punti a NULL (linearizzazione). Infine, viene aggiornata la coda. [Vedere qui](/user_data_management_project/utils.c#L243).
+        1. Se l'elemento da eliminare è la testa allora viene aggiornato head in modo che punti ad head->next. Ciò è visibile ai lettori immediatamente. Tutti i lettori d'ora in poi vedranno un nuovo elemento che head della lista dei messaggi validi. Viene anche aggiornato il prev del successore del nodo da eliminare. [Vedere qui](/user_data_management_project/utils.c#L230). 
+        2. Se l'elemento da eliminare è in mezzo alla lista allora viene sganciato andando ad aggiornare il puntatore a next del predecessore. Come già detto in precedenza, per costruzione quest'operazione è il punto di linearizzazione per i lettori. Infine, viene aggiornato il puntatore prev del successore. [Vedere qui](/user_data_management_project/utils.c#L236).
+        3. Se l'elemento è la coda allora viene aggiornato il next del predecessore in modo che punti a NULL (linearizzazione). Infine, viene aggiornata la coda. [Vedere qui](/user_data_management_project/utils.c#L248).
     7. Viene individuata la nuova epoca, viene aggiornato atomicamente il puntatore all'epoca corrente e infine si va in attesa del termine del grace period sull'epoca precedente. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L390)
     8. Al termine dell'epoca viene rilasciato lo spinlock, viene liberata la memoria del buffer, si decrementa l'usage counter e si risveglia il thread in attesa quando si verifica la condizione desiderata. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L405)
 

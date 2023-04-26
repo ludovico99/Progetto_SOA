@@ -288,7 +288,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     message->position = the_block->pos;
 
                     // Insertion at the end of the valid messages double linked list
-                    insert_sorted(&sh_data.first, &sh_data.last, message, message->position);
+                    insert_sorted(&sh_data.first, &sh_data.last, message);
 
                     /*decomment the previous line in case you want to use the Quick Sort*/
                     // insert (&sh_data.first, &sh_data.last, message);

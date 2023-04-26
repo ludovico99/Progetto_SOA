@@ -111,7 +111,7 @@ void insert(struct message **head, struct message **tail, struct message *to_ins
     (*tail)->next = to_insert;
     *tail = to_insert;
 }
-/*This function inserts a new node into a sorted doubly-linked list based on the value of an index in the 'elem' field of each node.
+/*This function inserts a new node into a sorted doubly-linked list based on the position.
 
 Parameters:
 struct message **head: Pointer to the head of the list
@@ -120,12 +120,16 @@ struct message *to_insert: Pointer to the message to be inserted
 unsigned int position: Express the position in the double linked list where message should be placed
 Return Value:
 This function does not return anything.*/
-void insert_sorted(struct message **head, struct message **tail, struct message *to_insert, int position)
-{
+void insert_sorted(struct message **head, struct message **tail, struct message *to_insert)
+{   
+    struct message *curr = NULL;
+    int position = 0;
 
-    struct message *curr;
+    if (to_insert == NULL) return;
+    position = to_insert->position;
     to_insert->prev = *tail;
     to_insert->next = NULL;
+
 
     if (*head == NULL)
     { // se la lista è vuota
