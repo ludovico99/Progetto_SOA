@@ -204,7 +204,7 @@ all:
         {
             printk("%s: Synchronous flush not succeded", MOD_NAME);
         }
-    }
+    } brelse(bh);
 #endif
 
 free:
