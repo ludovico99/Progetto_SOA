@@ -21,7 +21,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     struct message **the_tail = NULL;
     struct message *the_message = NULL;
     struct dev_blk *the_dev_blk;
-    struct buffer_head *bh;
+    struct buffer_head *bh = NULL;
     char *destination;
     uint16_t the_metadata = 0;
     unsigned long residual_bytes = -1;
@@ -104,6 +104,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     if (the_block == NULL)
     {
         printk("%s: No blocks available in the device\n", MOD_NAME);
+        kfree(the_message);
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
         goto all;
@@ -120,38 +121,36 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     if (!bh)
     {
         printk("%s: Error in retrieving the block at offset %d ", MOD_NAME, ret);
+        kfree(the_message);
         // Set the ret variable to -5 (error code for I/O error)
         ret = -EIO;
         // Jumps to the exit label.
         goto all;
     }
     the_dev_blk = (struct dev_blk *)bh->b_data;
-
-    if (the_dev_blk != NULL)
+    if (the_dev_blk == NULL)
+    {
+        printk("%s: Blk content is NULL", MOD_NAME);
+        kfree(the_message);
+        ret = -EINVAL;
+        goto all;
+    }
+    else
     {
         // Copies BLK_SIZE bytes from the destination array to the buffer data of the bh structure.
         memcpy(bh->b_data, destination, BLK_SIZE);
-
-#ifndef SYNC_FLUSH
         // Sets the dirty bit of the bh structure and marks it as requiring writeback.
         mark_buffer_dirty(bh);
 
+#ifndef SYNC_FLUSH
+
         AUDIT printk("%s: Page-cache write-back daemon will flush changes into the device", MOD_NAME);
 #else
-        if (sync_dirty_buffer(bh) == 0)
-        {
-            AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
-        }
-        else
-        {
-            printk("%s: Synchronous flush not succeded", MOD_NAME);
-            brelse(bh);
-            ret = -EIO;
-            goto all;
-        }
 #endif
-        // Releases the buffer_head structure.
+// Releases the buffer_head structure.
+#ifndef SYNC_FLUSH
         brelse(bh);
+#endif
         // If the device driver update is properly set, the RCU structure update can start
         AUDIT printk("%s: Thread with PID %d is updating the kernel structures ...", MOD_NAME, current->pid);
         // Don't need locked / synchronizing operation since the new message isn't available to readers
@@ -189,11 +188,27 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 
         AUDIT printk("%s: Thread with PID %d has correctly completed the put operation", MOD_NAME, current->pid);
     }
+
 all:
     // Releases the write lock of the sh_data structure.
     spin_unlock(&(sh_data.write_lock));
-    // Frees the memory allocated with kzalloc
+
+#ifdef SYNC_FLUSH
+    if (ret >= 0)
+    {
+        if (sync_dirty_buffer(bh) == 0)
+        {
+            AUDIT printk("%s: Synchronous flush succeded", MOD_NAME);
+        }
+        else
+        {
+            printk("%s: Synchronous flush not succeded", MOD_NAME);
+        }
+    }
+#endif
+
 free:
+    // Frees the memory allocated with kzalloc
     kfree(destination);
 
 fetch_and_sub:
@@ -375,7 +390,7 @@ asmlinkage long sys_invalidate_data(int offset)
         ret = -ENODATA;
         goto exit;
     }
-    //The RCU structure update can start...
+    // The RCU structure update can start...
     AUDIT printk("%s: Thread with PID %d is deleting the message from valid messages list...", MOD_NAME, current->pid);
 
     // Get the pointer to the message linked to the block that has to be invalidated ...

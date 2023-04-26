@@ -12,7 +12,7 @@
 #define POS_SIZE sizeof(int)
 #define MD_SIZE (sizeof(uint16_t) + POS_SIZE) //This macro defines the size of the metadata (in bytes).
 #define SIZE (BLK_SIZE - MD_SIZE) //This macro defines the maximum size of user data (in bytes).
-//#define SYNC_FLUSH 
+#define SYNC_FLUSH 
 #define NBLOCKS 40 //This macro defines the number of blocks manageable by the device driver.
 #define PERIOD 10000
 
