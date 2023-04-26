@@ -128,10 +128,10 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         goto all;
     }
     the_dev_blk = (struct dev_blk *)bh->b_data;
-    if (the_dev_blk == NULL)
-    {
+    if (the_dev_blk == NULL){
         printk("%s: Blk content is NULL", MOD_NAME);
         kfree(the_message);
+        brelse(bh);
         ret = -EINVAL;
         goto all;
     }
