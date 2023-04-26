@@ -145,12 +145,12 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 #ifndef SYNC_FLUSH
 
         AUDIT printk("%s: Page-cache write-back daemon will flush changes into the device", MOD_NAME);
-#else
-#endif
-// Releases the buffer_head structure.
-#ifndef SYNC_FLUSH
+        // Releases the buffer_head structure.
         brelse(bh);
+#else
+
 #endif
+
         // If the device driver update is properly set, the RCU structure update can start
         AUDIT printk("%s: Thread with PID %d is updating the kernel structures ...", MOD_NAME, current->pid);
         // Don't need locked / synchronizing operation since the new message isn't available to readers
