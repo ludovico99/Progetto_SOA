@@ -198,6 +198,7 @@ int main(int argc, char **argv)
     char write_buff[SIZE] = "Wathever content you would like.\n";
     int offset = 0;
     int ret = -1;
+
     if (argc < 2)
     {
         printf("usage: prog sys_call-num [offset] \n");
@@ -206,6 +207,12 @@ int main(int argc, char **argv)
 
     arg = strtol(argv[1], NULL, 10);
     AUDIT printf("Invoked system call with NR: %d\n", arg);
+
+    if (arg == GET_DATA && argc < 3) {
+        printf("sys_get_data needs an offset to be specified\n");
+        return EXIT_FAILURE;
+    }
+    
 
     switch (arg)
     {

@@ -334,7 +334,7 @@ void swapNodes(struct message *node1, struct message *node2)
     node1->position = node2->position;
     node2->position = temp;
 
-    /* Swapping the position*/
+    /* Swapping the index*/
     temp = node1->index;
     node1->index = node2->index;
     node2->index = temp;
@@ -385,14 +385,11 @@ void quickSort(struct message *start, struct message *end)
     pivot = partition(start, end);
     quickSort(start, pivot->prev);
 
-    // if pivot is picked and moved to the start,
-    // that means start and pivot is same
-    // so pick from next of pivot
+    // if pivot is picked and moved to the start, that means start and pivot is same so pick from next of pivot
     if (pivot != NULL && pivot == start)
         quickSort(pivot->next, end);
 
-    // if pivot is in between of the list,
-    // start from next of pivot,
+    // if pivot is in between of the list, start from next of pivot,
     else if (pivot != NULL && pivot->next != NULL)
         quickSort(pivot->next, end);
 }

@@ -55,7 +55,10 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
             - the_message->curr->prev->next != the_message->curr means that the writer has linearized the invalidation
         */
         if (the_message-> curr != NULL && the_message->curr == sh_data.first) goto read_same_block;
-        else if (the_message->curr == NULL || the_message->curr->prev == NULL || the_message->curr->prev->next != the_message->curr) goto release_token;
+        else if (the_message->curr == NULL || the_message->curr->prev == NULL || the_message->curr->prev->next != the_message->curr) 
+        { 
+            if (the_message->position != INVALID_POSITION) the_message->position ++; //The current block has been invalidated. Let's read the following one
+        }
         else goto read_same_block;
     }
 

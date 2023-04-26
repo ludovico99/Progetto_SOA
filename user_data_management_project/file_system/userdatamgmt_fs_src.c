@@ -198,10 +198,10 @@ This argument is the data passed by the user when they call mount().*/
 struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data)
 {
     int offset;
-    struct buffer_head *bh;
-    struct dev_blk *the_block;
-    struct message *message;
-    struct dentry *ret;
+    struct buffer_head *bh = NULL;
+    struct dev_blk *the_block = NULL;
+    struct message *message = NULL;
+    struct dentry *ret = NULL;
     int i = 0;
     int mnt;
 
@@ -303,8 +303,8 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
     exit_2:
         if (unlikely(IS_ERR(ret)))
         {
-            free_array(head);                                   // freeing the array of metadata
-            free_list(sh_data.first);                           // freeing the double linked list
+            if (head != NULL) free_array(head);                  // freeing the array of metadata
+            if (sh_data.first != NULL) free_list(sh_data.first); // freeing the double linked list
             blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE); // blkdev_get_by_path has been invoked
         }
     }
