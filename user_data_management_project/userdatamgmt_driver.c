@@ -165,7 +165,7 @@ Return Value:
 Returns 0 upon successful execution, otherwise returns an appropriate error code.*/
 static int dev_release(struct inode *inode, struct file *filp)
 {
-    AUDIT printk("%s: Device release has been invoked: the thread %d trying to release the device file\n ", MOD_NAME, current->pid);
+    AUDIT printk("%s: Device release has been invoked by the thread %d\n ", MOD_NAME, current->pid);
 
     if (!mount_md.mounted)
     {
@@ -173,7 +173,7 @@ static int dev_release(struct inode *inode, struct file *filp)
         return -ENODEV;
     }
 
-    kfree(filp->private_data);
+    if (filp->private_data != NULL) kfree(filp->private_data);
     __sync_fetch_and_sub(&(bdev_md.count), 1);
     wake_up_interruptible(&unmount_queue); 
     return 0;
@@ -189,7 +189,7 @@ Returns 0 upon successful execution, otherwise returns an appropriate error code
 static int dev_open(struct inode *inode, struct file *filp)
 {
     struct current_message *curr;
-    AUDIT printk("%s: Device open has been invoked: the thread %d trying to open file at offset %lld", MOD_NAME, current->pid, filp->f_pos);
+    AUDIT printk("%s: Device open has been invoked by the thread %d", MOD_NAME, current->pid);
 
     if (!mount_md.mounted)
     {
