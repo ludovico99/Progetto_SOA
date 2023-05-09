@@ -2,7 +2,7 @@
 #define _USER_H
 
 #define NUM_THREADS 12 //Number of threads to be spawned
-#define NBLOCKS 40 //Number of blocks manageable
+#define NBLOCKS 10000 //Number of blocks manageable
 #define REQS 2 // Number of system call invocation for each thread
 
 #ifdef MULTI_THREAD 

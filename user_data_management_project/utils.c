@@ -1,12 +1,11 @@
 // #include <linux/math.h>
-// #include <linux/log2.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/kthread.h>
 #include <linux/vmalloc.h>
 
 #include "userdatamgmt_driver.h"
-
+#include "userdatamgmt_fs.h"
 /*This function is a kernel thread function which periodically checks the grace period for RCU.
 
 Parameters:
@@ -27,27 +26,27 @@ static int house_keeper(void *unused)
 redo:
     msleep(PERIOD);
     AUDIT printk("%s: house keeper re-started\n",MOD_NAME);
-    // Acquires the spin lock associated with the 'write_lock' attribute of the 'sh_data' structure using spin_lock() function.
-    spin_lock(&(sh_data.write_lock));
-    // Updates the 'updated_epoch' variable by assigning MASK if 'next_epoch_index' attribute of the 'sh_data' structure is non-zero, else assigns 0 to it.
-    updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
-    // Increments the value of 'next_epoch_index' attribute of the 'sh_data' structure by 1 and takes the modulus 2 of it.
-    sh_data.next_epoch_index += 1;
-    sh_data.next_epoch_index %= 2;
-    // Exchanges the value of 'epoch' attribute of the 'sh_data' structure with 'updated_epoch' using __atomic_exchange_n() function and assigns the previous value stored in 'epoch' to 'last_epoch'.
-    last_epoch = __atomic_exchange_n(&(sh_data.epoch), updated_epoch, __ATOMIC_SEQ_CST);
+    // Acquires the spin lock associated with the 'write_lock' attribute of the 'rcu' structure using spin_lock() function.
+    spin_lock(&(rcu.write_lock));
+    // Updates the 'updated_epoch' variable by assigning MASK if 'next_epoch_index' attribute of the 'rcu' structure is non-zero, else assigns 0 to it.
+    updated_epoch = (rcu.next_epoch_index) ? MASK : 0;
+    // Increments the value of 'next_epoch_index' attribute of the 'rcu' structure by 1 and takes the modulus 2 of it.
+    rcu.next_epoch_index += 1;
+    rcu.next_epoch_index %= 2;
+    // Exchanges the value of 'epoch' attribute of the 'rcu' structure with 'updated_epoch' using __atomic_exchange_n() function and assigns the previous value stored in 'epoch' to 'last_epoch'.
+    last_epoch = __atomic_exchange_n(&(rcu.epoch), updated_epoch, __ATOMIC_SEQ_CST);
     // Computes the value of 'index' as 1 if the least significant bit of 'last_epoch' is set, else as 0.
     index = (last_epoch & MASK) ? 1 : 0;
     // Computes the value of 'grace_period_threads' as the value of 'last_epoch' without the least significant bit.
     grace_period_threads = last_epoch & (~MASK);
 
     AUDIT printk("%s: house keeping: waiting grace-full period (target index is %ld)\n",MOD_NAME, grace_period_threads);
-    // Calls wait_event_interruptible() function which waits on the 'wait_queue' until 'standing[index]' of the 'sh_data' structure is greater than or equal to 'grace_period_threads' and can be interrupted by a signal.
-    wait_event_interruptible(wait_queue, sh_data.standing[index] >= grace_period_threads);
-    // Sets 'standing[index]' attribute of the 'sh_data' structure to zero.
-    sh_data.standing[index] = 0;
-    // Releases the spin lock associated with the 'write_lock' attribute of the 'sh_data' structure using spin_unlock() function.
-    spin_unlock(&sh_data.write_lock);
+    // Calls wait_event_interruptible() function which waits on the 'wait_queue' until 'standing[index]' of the 'rcu' structure is greater than or equal to 'grace_period_threads' and can be interrupted by a signal.
+    wait_event_interruptible(wait_queue, rcu.standing[index] >= grace_period_threads);
+    // Sets 'standing[index]' attribute of the 'rcu' structure to zero.
+    rcu.standing[index] = 0;
+    // Releases the spin lock associated with the 'write_lock' attribute of the 'rcu' structure using spin_unlock() function.
+    spin_unlock(&rcu.write_lock);
     // Uses goto statement to go back to the redo label and repeat the above steps in an infinite loop.
     goto redo;
 
@@ -111,13 +110,13 @@ void insert(struct message **head, struct message **tail, struct message *to_ins
     (*tail)->next = to_insert;
     *tail = to_insert;
 }
+
 /*This function inserts a new node into a sorted doubly-linked list based on the position.
 
 Parameters:
 struct message **head: Pointer to the head of the list
 struct message **tail: Pointer to the tail of the list
 struct message *to_insert: Pointer to the message to be inserted
-unsigned int position: Express the position in the double linked list where message should be placed
 Return Value:
 This function does not return anything.*/
 void insert_sorted(struct message **head, struct message **tail, struct message *to_insert)
@@ -126,7 +125,7 @@ void insert_sorted(struct message **head, struct message **tail, struct message 
     int position = 0;
 
     if (to_insert == NULL) return;
-    position = to_insert->position;
+    position = to_insert->ordering.position;
     to_insert->prev = *tail;
     to_insert->next = NULL;
 
@@ -139,7 +138,7 @@ void insert_sorted(struct message **head, struct message **tail, struct message 
     else
     {
         curr = *head;
-        while (curr != NULL && curr->position < position)
+        while (curr != NULL &&  is_before(curr->ordering.position, position)) //to avoid overflow comparison
         {
             curr = curr->next;
         }
@@ -263,7 +262,7 @@ void print_list(struct message *head)
 {
     while (head != NULL)
     {
-        AUDIT printk("%s: INDEX: %d - POSITION: %d", MOD_NAME, head->index, head->position);
+        AUDIT printk("%s: INDEX: %d - INSERT_INDEX: %d", MOD_NAME, head->index, head->ordering.insert_index);
         head = head->next;
     }
     return;
@@ -278,7 +277,7 @@ void print_reverse(struct message *tail)
 {
     while (tail != NULL)
     {
-        AUDIT printk("%s: INDEX: %d - POSITION: %d", MOD_NAME, tail->index, tail->position);
+        AUDIT printk("%s: INDEX: %d - INSERT_INDEX: %d", MOD_NAME, tail->index, tail->ordering.insert_index);
         tail = tail->prev;
     }
     return;
@@ -287,13 +286,12 @@ void print_reverse(struct message *tail)
 /*This function searches for a message in a linked list based on the position of the element.
 Parameters:
 struct message*: A pointer to the head of the double linked list.
-int pos: An integer representing the value to be searched*/
-struct message *lookup_by_pos(struct message *head, int pos)
+int insert_index: An integer representing the value to be searched*/
+struct message *lookup_by_insert_index(struct message *head, unsigned int insert_index)
 {
 
     struct message *curr = head;
-
-    while (curr != NULL && curr->position < pos)
+    while (curr != NULL && is_before(curr->ordering.insert_index, insert_index)) //to avoid overflow comparison
     {
         curr = curr->next;
     }
@@ -329,10 +327,10 @@ void swapNodes(struct message *node1, struct message *node2)
         return;
     }
 
-    /* Swapping the position*/
-    temp = node1->position;
-    node1->position = node2->position;
-    node2->position = temp;
+    /* Swapping the insert_index*/
+    temp = node1->ordering.insert_index;
+    node1->ordering.insert_index = node2->ordering.insert_index;
+    node2->ordering.insert_index = temp;
 
     /* Swapping the index*/
     temp = node1->index;
@@ -347,10 +345,10 @@ void swapNodes(struct message *node1, struct message *node2)
 }
 
 /*partition takes two nodes as its parameters, a lower node and a higher node. It finds the pivot by selecting the last item in the list,
-and iterates through the list checking if each position is less than or equal to the pivot value.
-If it is, it swaps that node with the node at the 'i' position, where 'i' is one greater than the current 'i'.
+and iterates through the list checking if each insert_index is less than or equal to the pivot value.
+If it is, it swaps that node with the node at the 'i' insert_index, where 'i' is one greater than the current 'i'.
 When all items up until the high node have been processed in this way,
-then the node at the 'i' position is swapped with the high node thereby providing us with the pivot element.*/
+then the node at the 'i' insert_index is swapped with the high node thereby providing us with the pivot element.*/
 static struct message *partition(struct message *start, struct message *end)
 {   
     struct message *pivot = end;
@@ -362,7 +360,7 @@ static struct message *partition(struct message *start, struct message *end)
 
     for (j = start; j != end; j = j->next)
     {
-        if (j->position <= pivot->position)
+        if (is_before_eq(j->ordering.insert_index, pivot->ordering.insert_index)) //to avoid overflow comparison
         {   
             i = (i == NULL ? start : i->next);
             swapNodes(i, j);

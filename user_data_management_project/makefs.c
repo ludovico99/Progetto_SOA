@@ -35,7 +35,8 @@ char *testo[] = {
 int main(int argc, char *argv[])
 {
 	int fd, nbytes, i, nblocks;
-	int invalid = INVALID_POSITION;
+	int to_read = 0;
+	unsigned int invalid = INVALID;
 	ssize_t ret;
 	struct userdatafs_sb_info sb;
 	struct userdatafs_inode root_inode;
@@ -108,8 +109,9 @@ int main(int argc, char *argv[])
 	AUDIT printf("Padding in the inode block written sucessfully.\n");
 
 	// write file datablocks
-	for (i = 0; i < nblocks; i++)
-	{
+	for (i = 1; i <= nblocks; i++)
+	{	
+		
 		metadata = 0;
 		if (MD_SIZE > BLK_SIZE)
 		{
@@ -117,23 +119,24 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
-		if (i < NTESTI)
-		{
-			if (MD_SIZE + strlen(testo[i]) > BLK_SIZE)
+		if (i - 1 < NTESTI)
+		{	
+			to_read = (i - 1) % NTESTI;
+			if (MD_SIZE + strlen(testo[to_read]) > BLK_SIZE)
 			{
 				printf("The block is too small");
 				return -1;
 			}
 
-			nbytes = strlen(testo[i]);
-			ret = write(fd, testo[i], nbytes);
+			nbytes = strlen(testo[to_read]);
+			ret = write(fd, testo[to_read], nbytes);
 			if (ret != nbytes)
 			{
 				printf("Writing file datablock has failed.\n");
 				close(fd);
 				return -1;
 			}
-			AUDIT printf("File block at %d written succesfully.\n", get_offset(i));
+			AUDIT printf("File block at %d written succesfully.\n", get_offset(to_read));
 
 			nbytes = SIZE - nbytes;
 			block_padding = malloc(nbytes);
@@ -145,9 +148,9 @@ int main(int argc, char *argv[])
 				close(fd);
 				return -1;
 			}
-			AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(i));
+			AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(to_read));
 
-			metadata = set_length(metadata, strlen(testo[i]));
+			metadata = set_length(metadata, strlen(testo[to_read]));
 			metadata = set_valid(metadata);
 
 			ret = write(fd, &metadata, MD_SIZE - POS_SIZE);
@@ -183,7 +186,7 @@ int main(int argc, char *argv[])
 				close(fd);
 				return -1;
 			}
-			AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(i));
+			AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(i - 1));
 
 			metadata = set_invalid(metadata);
 
@@ -205,7 +208,7 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 			
-			AUDIT printf("File block at %d written succesfully.\n", get_offset(i));
+			AUDIT printf("File block at %d written succesfully.\n", get_offset(i - 1));
 		}
 		free(block_padding);
 	}

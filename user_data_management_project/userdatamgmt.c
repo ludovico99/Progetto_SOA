@@ -30,34 +30,36 @@
 #include <linux/fs.h>
 #include <linux/namei.h>
 
-#include "file_system/userdatamgmt_fs.h"
+#include "userdatamgmt_fs.h"
 #include "userdatamgmt_driver.h"
 #include "utils.h"
 #include "userdatamgmt.h"
-#include "lib/include/scth.h"
+// #include "lib/include/usctm.h"
 
 //Contains the file system type
-#include "file_system/userdatamgmt_fs_src.c"
+#include "userdatamgmt_fs_src.c"
 //Contains the implemented system call
 #include "userdatamgmt_sc.c"
 //Contains the implemented file_operations
 #include "userdatamgmt_driver.c"
 
+#include "lib/usctm_lib.c"
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ludovico Zarrelli");
 MODULE_DESCRIPTION("BLOCK-LEVEL DATA MANAGEMENT SERVICE");
 
-unsigned long the_syscall_table = 0x0;
-module_param(the_syscall_table, ulong, 0660);
-
 char mount_pt[255]  = "/";
 module_param_string(mount_point, mount_pt, 255, 0660);
+
+unsigned long the_syscall_table = 0x0;
 
 unsigned long the_ni_syscall;
 
 unsigned long new_sys_call_array[] = {0x0, 0x0, 0x0};
 #define HACKED_ENTRIES (int)(sizeof(new_sys_call_array)/sizeof(unsigned long))
-int restore[HACKED_ENTRIES] = {[0 ... (HACKED_ENTRIES-1)] -1};
+
+int indexes[HACKED_ENTRIES] = {[0 ... (HACKED_ENTRIES-1)] -1};
 
 
 int init_module(void) {
@@ -66,7 +68,7 @@ int init_module(void) {
     int i = 0;
 
     
-    printk("%s: dev example received sys_call_table address %px\n",MOD_NAME,(void*)the_syscall_table);
+    printk("%s: dev example received sys_call_table address %px\n",MOD_NAME,(void*)sys_call_table_address);
     printk("%s: initializing - hacked entries %d\n",MOD_NAME,HACKED_ENTRIES);
     
 
@@ -74,8 +76,7 @@ int init_module(void) {
     new_sys_call_array[1] = (unsigned long)sys_get_data;
     new_sys_call_array[2] = (unsigned long)sys_invalidate_data;
 
-    ret = get_entries(restore,HACKED_ENTRIES,(unsigned long*)the_syscall_table,&the_ni_syscall);
-
+    ret = get_entries(restore,indexes, HACKED_ENTRIES, &the_syscall_table, &the_ni_syscall);
 
     if (ret != HACKED_ENTRIES){
             printk("%s: could not hack %d entries (just %d)\n",MOD_NAME,HACKED_ENTRIES,ret);
@@ -115,6 +116,8 @@ void cleanup_module(void) {
     protect_memory();
     printk("%s: sys-call table restored to its original content\n",MOD_NAME);
 
+    reset_entries(restore, indexes, HACKED_ENTRIES);
+
     //unregister filesystem
     ret = unregister_filesystem(&userdatafs_type);
 
@@ -123,5 +126,6 @@ void cleanup_module(void) {
     else
         printk("%s: failed to unregister driver - error %d", MOD_NAME, ret);
 }
+
 
 

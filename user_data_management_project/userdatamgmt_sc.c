@@ -79,12 +79,12 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         goto free;
     }
 
-    // Acquires the write lock of the sh_data structure.
-    spin_lock(&(sh_data.write_lock));
+    // Acquires the write lock of the rcu structure.
+    spin_lock(&(rcu.write_lock));
 
-    // Assigns the reference of the first message and the last message of the sh_data list to the_head and the_tail variables respectively.
-    the_head = &sh_data.first;
-    the_tail = &sh_data.last;
+    // Assigns the reference of the first message and the last message of the rcu list to the_head and the_tail variables respectively.
+    the_head = &rcu.first;
+    the_tail = &rcu.last;
 
     // Traverses the array starting from the first element and returns the first empty block encountered.
     for (i = 0; i < nblocks; i++)
@@ -157,6 +157,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         the_message->index = get_index(ret);
         the_message->elem = the_block;
         the_message->prev = *the_tail;
+        the_message->ordering.insert_index = ++num_insertions;
 
         // Don't need locked / synchronizing operation since no readers have to traverse the array of metadata
         the_block->msg = the_message; // Assigns the reference to the_message variable to the msg field of the_block structure.
@@ -164,10 +165,8 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 
         if (*the_tail == NULL)
         {
-            // If sh_data list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
+            // If rcu list is empty, assigns the reference of the_message variable to both the_head and the_tail variables.
             AUDIT printk("%s: List is empty", MOD_NAME);
-
-            the_message->position = 0;
 
             *the_tail = the_message;
 
@@ -177,9 +176,8 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
             goto all;
         }
 
-        // Otherwise, appends the_message variable at the end of the sh_data list.
+        // Otherwise, appends the_message variable at the end of the rcu list.
         AUDIT printk("%s: Thread with PID %d is appending the newest message in the double linked list...", MOD_NAME, current->pid);
-        the_message->position = (*the_tail)->position + 1;
 
         *the_tail = the_message;
 
@@ -190,8 +188,8 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     }
 
 all:
-    // Releases the write lock of the sh_data structure.
-    spin_unlock(&(sh_data.write_lock));
+    // Releases the write lock of the rcu structure.
+    spin_unlock(&(rcu.write_lock));
 
 #ifdef SYNC_FLUSH
     if (ret >= 0)
@@ -268,10 +266,10 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     }
 
     // Adding 1 to the current epoch
-    my_epoch = __sync_fetch_and_add(&(sh_data.epoch), 1);
+    my_epoch = __sync_fetch_and_add(&(rcu.epoch), 1);
 
     // Searching the message with the specified offset in the valid messages list
-    the_message = lookup_by_index(sh_data.first, offset);
+    the_message = lookup_by_index(rcu.first, offset);
     if (the_message == NULL)
     {
         printk("%s: The message at index %d is invalid", MOD_NAME, offset);
@@ -292,20 +290,20 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     {
 
         msg_len = get_length(dev_blk->metadata);
-        if (size > msg_len)
-            size = msg_len;
-
-        while (ret != 0)
+        
+        while (ret != 0) //It should never fail because len is costrained to the size of the buffer
         {
-            AUDIT printk("%s: Thread with PID %d is reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, current->pid, get_offset(offset), off, msg_len - off);
+            AUDIT printk("%s: Thread with PID %d is reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, current->pid, offset, off, msg_len - off);
             if (off == 0)
-                len = size;
-            else if (off < size)
-                len = size - off;
+                len = msg_len;
+            else if (off < msg_len)
+                len = msg_len - off;
             else
                 len = 0;
 
-            ret = copy_to_user(destination, dev_blk->data + off, len); // Returns number of bytes that could not be copied
+            if (size < len) len = size; //If the size of the buffer is less than len then len is costrained to size
+
+            ret = copy_to_user(destination + off, dev_blk->data + off, len); // Returns number of bytes that could not be copied
             off += len - ret;                                          // Residual bytes
         }
         AUDIT printk("%s: Thread with PID %d has completed the read operation ...", MOD_NAME, current->pid);
@@ -315,7 +313,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 exit:
 
     index = (my_epoch & MASK) ? 1 : 0;
-    __sync_fetch_and_add(&(sh_data.standing[index]), 1); // Releasing a token in the correct epoch counter
+    __sync_fetch_and_add(&(rcu.standing[index]), 1); // Releasing a token in the correct epoch counter
     wake_up_interruptible(&invalidate_queue);
 
     __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
@@ -369,7 +367,7 @@ asmlinkage long sys_invalidate_data(int offset)
     }
 
     // Acquiring the lock to avoid writers concurrency ...
-    spin_lock(&(sh_data.write_lock));
+    spin_lock(&(rcu.write_lock));
 
     AUDIT printk("%s: Thread with PID %d is accessing metadata for the block at index %d", MOD_NAME, current->pid, offset);
     // Accessing to the block's metadata with offset as index
@@ -377,7 +375,7 @@ asmlinkage long sys_invalidate_data(int offset)
     if (the_block == NULL) // Consistency check: The array should contains all block in the device
     {
         // Releasing the write lock ...
-        spin_unlock((&sh_data.write_lock));
+        spin_unlock((&rcu.write_lock));
         printk("%s: The block with the specified offset has no device matches", MOD_NAME);
         ret = -ENODATA;
         goto exit;
@@ -385,7 +383,7 @@ asmlinkage long sys_invalidate_data(int offset)
     if (!get_validity(the_block->metadata)) // The block with the specified offset has been already invalidated
     {
         // Releasing the write lock ...
-        spin_unlock((&sh_data.write_lock));
+        spin_unlock((&rcu.write_lock));
         printk("%s: The block with the specified offset has been already invalidated", MOD_NAME);
         ret = -ENODATA;
         goto exit;
@@ -398,27 +396,27 @@ asmlinkage long sys_invalidate_data(int offset)
     the_block->msg = NULL;
 
     // Deleting the message from the double linked list ...
-    delete (&sh_data.first, &sh_data.last, the_message);
+    delete (&rcu.first, &rcu.last, the_message);
 
     the_block->metadata = the_metadata;
 
     //  move to a new epoch - still under write lock
-    updated_epoch = (sh_data.next_epoch_index) ? MASK : 0;
+    updated_epoch = (rcu.next_epoch_index) ? MASK : 0;
 
-    sh_data.next_epoch_index += 1;
-    sh_data.next_epoch_index %= 2;
+    rcu.next_epoch_index += 1;
+    rcu.next_epoch_index %= 2;
 
-    last_epoch = __atomic_exchange_n(&(sh_data.epoch), updated_epoch, __ATOMIC_SEQ_CST);
+    last_epoch = __atomic_exchange_n(&(rcu.epoch), updated_epoch, __ATOMIC_SEQ_CST);
     index = (last_epoch & MASK) ? 1 : 0;
     grace_period_threads = last_epoch & (~MASK);
 
     AUDIT printk("%s: Invalidation: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
 
-    wait_event_interruptible(invalidate_queue, sh_data.standing[index] >= grace_period_threads);
-    sh_data.standing[index] = 0;
+    wait_event_interruptible(invalidate_queue, rcu.standing[index] >= grace_period_threads);
+    rcu.standing[index] = 0;
 
     // Releasing the write lock ...
-    spin_unlock((&sh_data.write_lock));
+    spin_unlock((&rcu.write_lock));
 
     AUDIT printk("%s: Thread with PID %d is releasing the buffer of the invalidate message ...\n", MOD_NAME, current->pid);
     // Finally the grace period endeded and the message can be released ...

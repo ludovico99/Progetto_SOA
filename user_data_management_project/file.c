@@ -9,7 +9,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 
-#include "../userdatamgmt_driver.h"
+#include "userdatamgmt_driver.h"
 #include "userdatamgmt_fs.h"
 
 struct dentry *userdatafs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags)

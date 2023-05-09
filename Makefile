@@ -1,4 +1,4 @@
-the_usctm_dir = $(shell pwd)/Linux-sys_call_table-discoverer/
+the_usctm_dir = $(shell pwd)/user_data_management_project/the_usctm/
 progetto_soa_dir = $(shell pwd)/user_data_management_project/
 
 

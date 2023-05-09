@@ -19,7 +19,7 @@ pthread_barrier_t barrier;
 void *multi_ops(void *index)
 {
     char buffer[SIZE];
-    char write_buff[SIZE] = "Wathever content you would like.\n";
+    char write_buff[] = "Wathever content you would like.\n";
     int my_id = *(int *)index;
     int offset = 0;
     int ret = -1;
@@ -51,6 +51,7 @@ void *multi_ops(void *index)
         case GET_DATA:
             memset(buffer, 0, SIZE);
             ret = syscall(GET_DATA, offset, buffer, SIZE);
+            buffer[SIZE] = '\0';
             if (ret >= 0)
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
             break;
@@ -78,7 +79,7 @@ void *my_thread(void *index)
     int count = 0;
     int upper_bound = 0;
     char buffer[SIZE];
-    char write_buff[SIZE] = "Wathever content you would like.\n";
+    char write_buff[] = "Wathever content you would like.\n";
     int offset = 0;
     int ret = -1;
     int i = 0;
@@ -115,6 +116,7 @@ void *my_thread(void *index)
         case GET_DATA:
             memset(buffer, 0, SIZE);
             ret = syscall(GET_DATA, offset, buffer, SIZE);
+            buffer[SIZE] = '\0';
             if (ret > 0)
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
             break;
@@ -140,7 +142,7 @@ void *same_blk(void *index)
 {
     int my_id = *(int *)index;
     char buffer[SIZE];
-    char write_buff[SIZE] = "Wathever content you would like.\n";
+    char write_buff[] = "Wathever content you would like.\n";
     int offset = 0;
     int ret = -1;
     int i = 0;
@@ -170,6 +172,7 @@ void *same_blk(void *index)
         case GET_DATA:
             memset(buffer, 0, SIZE);
             ret = syscall(GET_DATA, offset, buffer, SIZE);
+            buffer[SIZE] = '\0';
             if (ret >= 0)
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
             break;
@@ -194,8 +197,8 @@ int main(int argc, char **argv)
     int arg;
 
 #ifndef MULTI_THREAD
-    char buffer[SIZE];
-    char write_buff[SIZE] = "Wathever content you would like.\n";
+    char buffer[SIZE] = "\0";
+    char write_buff[] = "Wathever content you would like.\n";
     int offset = 0;
     int ret = -1;
 
@@ -222,8 +225,10 @@ int main(int argc, char **argv)
             AUDIT printf("%s written into block at index %d\n", write_buff, ret - 2);
         break;
     case GET_DATA:
+        memset(buffer, 0, SIZE);
         offset = strtol(argv[2], NULL, 10);
         ret = syscall(GET_DATA, offset, buffer, SIZE);
+        buffer[SIZE] = '\0';
         if (ret >= 0)
             printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
         break;

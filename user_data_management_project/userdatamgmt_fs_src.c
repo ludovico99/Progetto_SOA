@@ -1,12 +1,14 @@
 #define EXPORT_SYMTAB
 
 struct bdev_metadata bdev_md = {0, NULL, NULL};
-struct mount_metadata mount_md = {0, "/"};
-struct rcu_data sh_data;
+struct mount_metadata mount_md = {false, "/"};
+struct rcu_data rcu;
 
 int nblocks = 0; // Real number of blocks into the device
-
+uint64_t file_size = 0; //Size of the file that represent the block device
 struct blk_element **head; // It's the array of block's metadata
+
+unsigned int num_insertions = 0;
 
 static struct super_operations my_super_ops = {};
 
@@ -41,16 +43,7 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     {
         return -EIO;
     }
-    // check on the number of manageable blocks
-    inode_disk = (struct userdatafs_inode *)bh->b_data;
-    nblocks = inode_disk->file_size / BLK_SIZE;
-    if (NBLOCKS < nblocks)
-    {
-        printk("%s: Too many block to manage", MOD_NAME);
-        brelse(bh);
-        return -EINVAL;
-    }
-
+   
     // check on the expected magic number
     if (magic != sb->s_magic)
     {
@@ -59,6 +52,20 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
 
     sb->s_fs_info = NULL;     // FS specific data (the magic number) already reported into the generic superblock
     sb->s_op = &my_super_ops; // set our own operations
+
+    // check on the number of manageable blocks
+    inode_disk = (struct userdatafs_inode *)bh->b_data;
+    if (inode_disk != NULL){
+        file_size = inode_disk -> file_size; // 
+        nblocks = file_size/ BLK_SIZE; //Computing the number of block in the device
+    }
+    printk("%s: number of block in the device is %d", MOD_NAME, nblocks);
+    brelse(bh);
+    if (NBLOCKS < nblocks)
+    {
+        printk("%s: Too many block to manage", MOD_NAME);
+        return -EINVAL;
+    }
 
     root_inode = iget_locked(sb, 0); // get a root inode indexed with 0 from cache
     if (!root_inode)
@@ -104,16 +111,17 @@ s
 This argument is a pointer to the super_block structure.*/
 static void userdatafs_kill_superblock(struct super_block *s)
 {
-    int mnt = -1, i = 0, pos = 0;
+    int mnt = -1, i = 0;
+    unsigned int pos = 0;
     int offset = 0;
     uint16_t the_metadata = 0;
     struct buffer_head *bh;
     struct dev_blk *the_block;
-    struct message *curr = sh_data.first;
+    struct message *curr = rcu.first;
 
     /*fetches the value of the mounted flag using an atomic compare-and-swap operation, setting the flag to 0 if it was previously 1.
     If the mounted flag was already 0, it prints an error message and returns.*/
-    mnt = __sync_val_compare_and_swap(&mount_md.mounted, 1, 0);
+    mnt = __sync_val_compare_and_swap(&mount_md.mounted, true, false);
     if (mnt == 0)
     {
         printk("%s: filesystem has been already unmounted\n", MOD_NAME);
@@ -124,15 +132,19 @@ static void userdatafs_kill_superblock(struct super_block *s)
     /*puts the current process to sleep until the condition (bdev_md.count == 0) is true or an interrupt is received.*/
     wait_event_interruptible(unmount_queue, bdev_md.count == 0);
 
+    if (head == NULL){
+        printk("%s: head of the array of metadata is null ...", MOD_NAME);
+        goto exit;
+    }
+
     AUDIT printk("%s: Flushing to the device some changes...", MOD_NAME);
 
-    // Filling the gaps between positions to avoid overflow
+    // The insert_index is normalized to the position in the valid messages list
     while (curr != NULL)
     {
-
-        curr->position = pos;
-        curr = curr->next;
         pos++;
+        curr->ordering.position = pos;
+        curr = curr->next;
     }
 
     for (i = 0; i < nblocks; i++)
@@ -149,14 +161,14 @@ static void userdatafs_kill_superblock(struct super_block *s)
         if (the_block != NULL)
         { // If the block is valid it flushes the position in the device
             if (get_validity(head[i]->metadata))
-                the_block->pos = head[i]->msg->position;
+                the_block->position = head[i]->msg->ordering.position;
 
             // If the block is valid it updates the metadata and set the position to -1 in the device
             else
             {
                 the_metadata = set_invalid(the_block->metadata);
                 memcpy(&(the_block->metadata), &the_metadata, MD_SIZE - POS_SIZE);
-                the_block->pos = INVALID_POSITION;
+                the_block->position = INVALID;
             }
         }
         // Sets the dirty bit of the bh structure and marks it as requiring writeback.
@@ -167,16 +179,18 @@ static void userdatafs_kill_superblock(struct super_block *s)
         brelse(bh);
     }
 
-    blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
+exit:
+    if (bdev_md.bdev != NULL) blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
+
     /*After all pending threads have finished, it calls kill_block_super() to release resources associated with the superblock.*/
-    kill_block_super(s);
+    if (s != NULL) kill_block_super(s);
 
     AUDIT printk("%s: Freeing the struct allocated in the kernel memory", MOD_NAME);
 
-    free_array(head);
+    if (head != NULL) free_array(head);
 
     // Freeing the double linked list of valid messages...
-    free_list(sh_data.first);
+    if (rcu.first != NULL) free_list(rcu.first);
     // Finally, it prints a log message indicating that unmount was successful and returns.
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
@@ -206,7 +220,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
     int mnt;
 
     // If the CAS operation is able to change the value 0 to 1, it means that the device driver has not been mounted before
-    mnt = __sync_val_compare_and_swap(&mount_md.mounted, 0, 1);
+    mnt = __sync_val_compare_and_swap(&mount_md.mounted, false, true);
     if (mnt == 1)
     {
         printk("%s: the device driver can support only a single mount point at time\n", MOD_NAME);
@@ -225,7 +239,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         bdev_md.bdev = blkdev_get_by_path(dev_name, FMODE_READ | FMODE_WRITE, NULL);
         bdev_md.path = dev_name;
         // Initialization of the RCU data
-        init(&sh_data);
+        init(&rcu);
 
         // Allocates memory to the 'head' using kzalloc or vmalloc based on the size of 'unsigned int * NBLOCKS'
         if (sizeof(struct blk_element *) * nblocks < 128 * 1024)
@@ -268,7 +282,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                 // Link the metadata in position i of the corresponding list
                 head[i]->metadata = the_block->metadata;
 
-                AUDIT printk("%s: Block at offset %d (index %d), at position %d, contains the message = %s\n", MOD_NAME, offset, i, the_block->pos, the_block->data);
+                AUDIT printk("%s: Block at offset %d (index %d), with insert_index %d, contains the message = %s\n", MOD_NAME, offset, i, the_block->position, the_block->data);
 
                 if (get_validity(the_block->metadata)) // The block at position i is valid. it has to be inserted in the double linked list
                 {
@@ -285,32 +299,36 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     message->elem = head[i];
                     head[i]->msg = message;
                     message->index = i;
-                    message->position = the_block->pos;
+                    message->ordering.position = the_block->position;
 
-                    // Insertion at the end of the valid messages double linked list
-                    insert_sorted(&sh_data.first, &sh_data.last, message);
+                    // Insertion ordered in the valid messages double linked list
+                    insert_sorted(&rcu.first, &rcu.last, message);
 
                     /*decomment the previous line in case you want to use the Quick Sort*/
-                    // insert (&sh_data.first, &sh_data.last, message);
+                    //insert(&rcu.first, &rcu.last, message);
                 }
             }
             brelse(bh);
         }
         /*Quick sort has been implemented for performance reasons. To avoid too many recursions is commented and
         the iterative version with upper bound O(n^2) is preferred. */
-        // quickSort(sh_data.first, sh_data.last); //Sorting with upper bound O(n*log(n))
+        //quickSort(rcu.first, rcu.last); // Sorting with upper bound O(n*log(n))
+        if (rcu.last != NULL)
+            num_insertions = rcu.last->ordering.position; // Set the value of total number of insertions to the number of valid messages...
 
     exit_2:
         if (unlikely(IS_ERR(ret)))
         {
-            if (head != NULL) free_array(head);                  // freeing the array of metadata
-            if (sh_data.first != NULL) free_list(sh_data.first); // freeing the double linked list
+            if (head != NULL)
+                free_array(head); // freeing the array of metadata
+            if (rcu.first != NULL)
+                free_list(rcu.first);                       // freeing the double linked list
             blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE); // blkdev_get_by_path has been invoked
         }
     }
 
     if (unlikely(IS_ERR(ret)))
-        mount_md.mounted = 0;
+        mount_md.mounted = false;
 
     /*Finally, the function returns a pointer to the dentry structure if successful or an error pointer if unsuccessful.*/
     return ret;

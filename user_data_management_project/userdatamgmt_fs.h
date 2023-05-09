@@ -1,7 +1,7 @@
 #ifndef _USER_DATA_MANAGEMENT_FS_H
 #define _USER_DATA_MANAGEMENT_FS_H
 
-#include "../userdatamgmt.h"
+#include "userdatamgmt.h"
 
 #define MAGIC 0x42424242 //This macro defines a value used to identify user data filesystem's superblock on disk.
 #define SB_BLOCK_NUMBER 0 //This macro defines the block number where the user data filesystem's superblock will be stored.
@@ -50,5 +50,9 @@ extern const struct inode_operations userdatafs_inode_ops;
 extern const struct file_operations userdatafs_dir_operations;
 
 extern int nblocks;
+
+extern unsigned int num_insertions;
+
+extern uint64_t file_size;
 
 #endif
