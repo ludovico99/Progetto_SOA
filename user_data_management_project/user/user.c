@@ -152,9 +152,9 @@ void *same_blk(void *index)
     offset = strtol(data[2], NULL, 10);
 
     // 66 % READERS, 33% WRITERS
-    if (my_id <= (NUM_THREADS * 2) / 3)
+    if (my_id < (NUM_THREADS * 2) / 3)
         arg = GET_DATA;
-    else if (my_id >= (NUM_THREADS * 2) / 3 + NUM_THREADS / 6)
+    else if (my_id > (NUM_THREADS * 2) / 3 + NUM_THREADS / 6)
         arg = PUT_DATA;
     else
         arg = INVALIDATE_DATA;

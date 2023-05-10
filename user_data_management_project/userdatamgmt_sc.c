@@ -103,7 +103,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
 
     if (the_block == NULL)
     {
-        printk("%s: No blocks available in the device\n", MOD_NAME);
+        AUDIT printk("%s: No blocks available in the device\n", MOD_NAME);
         kfree(the_message);
         // Set the ret variable to -12 (error code for out of memory).
         ret = -ENOMEM;
@@ -116,7 +116,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         printk("%s: New metadata for block at offset %d (index %d) are %x", MOD_NAME, ret, get_index(ret), the_metadata);
     }
     // Reads a block from the device starting at the offset indicated by the ret variable.
-    printk("%s: Thread with PID %d is flushing changes into the device", MOD_NAME, current->pid);
+    AUDIT printk("%s: Thread with PID %d is flushing changes into the device", MOD_NAME, current->pid);
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, ret);
     if (!bh)
     {
@@ -280,7 +280,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     bh = (struct buffer_head *)sb_bread(bdev_md.bdev->bd_super, get_offset(offset));
     if (!bh)
     {
-        AUDIT printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
+        printk("%s: Error in retrieving the block at index %d", MOD_NAME, offset);
         ret = -EIO;
         goto exit;
     }
