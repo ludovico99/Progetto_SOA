@@ -10,6 +10,7 @@
 #include "userdatamgmt_fs.h"
 #define NTESTI 20
 
+
 char *testo[] = {
 	"I have a dream  - Martin Luther King Jr\n",
 	"Ask not what your country can do for you, ask what you can do for your country  - John F. Kennedy\n",
@@ -110,8 +111,8 @@ int main(int argc, char *argv[])
 
 	// write file datablocks
 	for (i = 1; i <= nblocks; i++)
-	{	
-		
+	{
+
 		metadata = 0;
 		if (MD_SIZE > BLK_SIZE)
 		{
@@ -119,97 +120,122 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
+#ifdef ALL_VALID
+#elif ALL_INVALID
+#else
 		if (i - 1 < NTESTI)
-		{	
-			to_read = (i - 1) % NTESTI;
-			if (MD_SIZE + strlen(testo[to_read]) > BLK_SIZE)
-			{
-				printf("The block is too small");
-				return -1;
-			}
+		{
+#endif
 
-			nbytes = strlen(testo[to_read]);
-			ret = write(fd, testo[to_read], nbytes);
-			if (ret != nbytes)
-			{
-				printf("Writing file datablock has failed.\n");
-				close(fd);
-				return -1;
-			}
-			AUDIT printf("File block at %d written succesfully.\n", get_offset(to_read));
-
-			nbytes = SIZE - nbytes;
-			block_padding = malloc(nbytes);
-			ret = write(fd, block_padding, nbytes);
-
-			if (ret != nbytes)
-			{
-				printf("The padding bytes are not written properly. Retry your mkfs\n");
-				close(fd);
-				return -1;
-			}
-			AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(to_read));
-
-			metadata = set_length(metadata, strlen(testo[to_read]));
-			metadata = set_valid(metadata);
-
-			ret = write(fd, &metadata, MD_SIZE - POS_SIZE);
-			AUDIT printf("Metadata: %x\n", metadata);
-			if (ret != MD_SIZE - POS_SIZE)
-			{
-				printf("Writing the metadata has failed.\n");
-				close(fd);
-				return -1;
-			}
-
-			ret = write(fd, &i, POS_SIZE);
-			AUDIT printf("Message is at position:  %d\n", i);
-
-			if (ret != POS_SIZE)
-			{
-				printf("Writing the position has failed.\n");
-				close(fd);
-				return -1;
-			}
-
+#ifdef ALL_INVALID
+#else
+		to_read = (i - 1) % NTESTI;
+		if (MD_SIZE + strlen(testo[to_read]) > BLK_SIZE)
+		{
+			printf("The block is too small");
+			return -1;
 		}
+
+		nbytes = strlen(testo[to_read]);
+		ret = write(fd, testo[to_read], nbytes);
+		if (ret != nbytes)
+		{
+			printf("Writing file datablock has failed.\n");
+			close(fd);
+			return -1;
+		}
+		AUDIT printf("File block at %d written succesfully.\n", get_offset(to_read));
+
+		nbytes = SIZE - nbytes;
+		block_padding = malloc(nbytes);
+		ret = write(fd, block_padding, nbytes);
+
+		if (ret != nbytes)
+		{
+			printf("The padding bytes are not written properly. Retry your mkfs\n");
+			close(fd);
+			return -1;
+		}
+		AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(to_read));
+
+		metadata = set_length(metadata, strlen(testo[to_read]));
+		metadata = set_valid(metadata);
+
+		ret = write(fd, &metadata, MD_SIZE - POS_SIZE);
+		AUDIT printf("Metadata: %x\n", metadata);
+		if (ret != MD_SIZE - POS_SIZE)
+		{
+			printf("Writing the metadata has failed.\n");
+			close(fd);
+			return -1;
+		}
+
+		ret = write(fd, &i, POS_SIZE);
+		AUDIT printf("Message is at position:  %d\n", i);
+
+		if (ret != POS_SIZE)
+		{
+			printf("Writing the position has failed.\n");
+			close(fd);
+			return -1;
+		}
+#endif
+
+#ifdef ALL_VALID
+#elif ALL_INVALID
+#else
+		}
+#endif
+
+#ifdef ALL_VALID
+#elif ALL_INVALID
+#else
 		else
 		{
+#endif
 
-			nbytes = SIZE;
-			block_padding = malloc(nbytes);
-			ret = write(fd, block_padding, nbytes);
+#ifndef ALL_VALID
+		nbytes = SIZE;
+		block_padding = malloc(nbytes);
+		ret = write(fd, block_padding, nbytes);
 
-			if (ret != nbytes)
-			{
-				printf("The padding bytes are not written properly. Retry your mkfs\n");
-				close(fd);
-				return -1;
-			}
-			AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(i - 1));
-
-			metadata = set_invalid(metadata);
-
-			ret = write(fd, &metadata, MD_SIZE - POS_SIZE);
-			AUDIT printf("Metadata: %x\n", metadata);
-			if (ret != MD_SIZE - POS_SIZE)
-			{
-				printf("Writing the metadata has failed.\n");
-				close(fd);
-				return -1;
-			}
-
-			ret = write(fd, &invalid, POS_SIZE);
-			AUDIT printf("Message is at position:  %d\n", invalid);
-			if (ret != POS_SIZE)
-			{
-				printf("Writing the metadata has failed.\n");
-				close(fd);
-				return -1;
-			}
-			
-			AUDIT printf("File block at %d written succesfully.\n", get_offset(i - 1));
+		if (ret != nbytes)
+		{
+			printf("The padding bytes are not written properly. Retry your mkfs\n");
+			close(fd);
+			return -1;
 		}
+		AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(i - 1));
+
+		metadata = set_invalid(metadata);
+
+		ret = write(fd, &metadata, MD_SIZE - POS_SIZE);
+		AUDIT printf("Metadata: %x\n", metadata);
+		if (ret != MD_SIZE - POS_SIZE)
+		{
+			printf("Writing the metadata has failed.\n");
+			close(fd);
+			return -1;
+		}
+
+		ret = write(fd, &invalid, POS_SIZE);
+		AUDIT printf("Message is at position:  %d\n", invalid);
+		if (ret != POS_SIZE)
+		{
+			printf("Writing the metadata has failed.\n");
+			close(fd);
+			return -1;
+		}
+
+		AUDIT printf("File block at %d written succesfully.\n", get_offset(i - 1));
+#endif
+
+#ifdef ALL_VALID
+#elif ALL_INVALID
+#else
+		}
+#endif
+
 		free(block_padding);
 	}
 	close(fd);

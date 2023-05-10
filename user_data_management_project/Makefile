@@ -16,6 +16,14 @@ all:
 	gcc ./makefs.c -o ./makefs
 	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) modules 
 
+all_valid_blocks:
+	gcc ./makefs.c -o ./makefs -DALL_VALID
+	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) modules
+ 
+all_invalid_blocks:
+	gcc ./makefs.c -o ./makefs -DALL_INVALID
+	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) modules
+
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) clean
 	
