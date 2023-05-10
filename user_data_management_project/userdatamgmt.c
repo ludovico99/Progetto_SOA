@@ -58,7 +58,7 @@ unsigned long the_ni_syscall;
 unsigned long new_sys_call_array[] = {0x0, 0x0, 0x0};
 #define HACKED_ENTRIES (int)(sizeof(new_sys_call_array)/sizeof(unsigned long))
 
-int indexes[HACKED_ENTRIES] = {[0 ... (HACKED_ENTRIES-1)] -1};
+int indexes[MAX_ACQUIRES] = {[0 ... (MAX_ACQUIRES-1)] -1};
 
 
 int init_module(void) {
@@ -75,7 +75,7 @@ int init_module(void) {
     new_sys_call_array[1] = (unsigned long)sys_get_data;
     new_sys_call_array[2] = (unsigned long)sys_invalidate_data;
 
-    ret = get_entries(restore,indexes, HACKED_ENTRIES, &the_syscall_table, &the_ni_syscall);
+    ret = get_entries (HACKED_ENTRIES, &the_syscall_table, &the_ni_syscall);
 
     if (ret != HACKED_ENTRIES){
             printk("%s: could not hack %d entries (just %d)\n",MOD_NAME,HACKED_ENTRIES,ret);
@@ -85,7 +85,7 @@ int init_module(void) {
     unprotect_memory();
 
     for(i=0;i<HACKED_ENTRIES;i++){
-            ((unsigned long *)the_syscall_table)[restore[i]] = (unsigned long)new_sys_call_array[i];
+            ((unsigned long *)the_syscall_table)[restore[indexes[i]]] = (unsigned long)new_sys_call_array[i];
     }
 
     protect_memory();
@@ -110,12 +110,12 @@ void cleanup_module(void) {
 
     unprotect_memory();
     for(i=0;i<HACKED_ENTRIES;i++){
-            ((unsigned long *)the_syscall_table)[restore[i]] = the_ni_syscall;
+            ((unsigned long *)the_syscall_table)[restore[indexes[i]]] = the_ni_syscall;
+            printk("%s: sys-call table entry %d became available again\n", MOD_NAME, restore[indexes[i]]);
+            restore[indexes[i]] = -1;
     }
     protect_memory();
     printk("%s: sys-call table restored to its original content\n",MOD_NAME);
-
-    reset_entries(indexes, HACKED_ENTRIES);
 
     //unregister filesystem
     ret = unregister_filesystem(&userdatafs_type);

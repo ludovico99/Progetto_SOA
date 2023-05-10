@@ -4,8 +4,7 @@
 #define MAX_ACQUIRES 4
 #define MAX_FREE 15
 
-extern int get_entries(int *, int*, int, unsigned long *, unsigned long *);
-extern void reset_entries(int *, int);
+extern int get_entries(int, unsigned long *, unsigned long *);
 extern void unprotect_memory(void);
 extern void protect_memory(void);
 
@@ -18,5 +17,8 @@ extern int free_entries[MAX_FREE];
 extern int num_entries_found;
 
 extern int restore[MAX_ACQUIRES];
+
+extern int indexes[MAX_ACQUIRES];
+
 
 #endif

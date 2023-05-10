@@ -63,13 +63,14 @@ inline void unprotect_memory(void)
 
 
 
-int get_entries(int *entry_ids, int *entry_ndx, int num_acquires, unsigned long* sys_call_table, unsigned long *sys_ni_sys_call)
+int get_entries(int num_acquires, unsigned long* sys_call_table, unsigned long *sys_ni_sys_call)
 {
 
 	int ret = 0;
 	int i = 0;
 
-	int indexes[MAX_ACQUIRES] = {[0 ... (MAX_ACQUIRES-1)] -1};
+	int ids[MAX_ACQUIRES] = {[0 ... (MAX_ACQUIRES-1)] -1};
+	int entry_ids[MAX_ACQUIRES] = {[0 ... (MAX_ACQUIRES-1)] -1};
 
 	printk("%s: trying to get %d entries from the sys-call table at address %px\n", LIBNAME, num_acquires, (void *)sys_call_table_address);
 
@@ -95,8 +96,8 @@ int get_entries(int *entry_ids, int *entry_ndx, int num_acquires, unsigned long*
 		if (restore[i] == -1)
 		{	
 			printk("%s: acquiring table entry %d\n",LIBNAME,free_entries[i]);
-			restore[i] = free_entries[i];
-			indexes[i] = i;
+			entry_ids[i] = free_entries[i];
+			ids[i] = i;
 			ret++;
 		}
 	}
@@ -107,18 +108,9 @@ int get_entries(int *entry_ids, int *entry_ndx, int num_acquires, unsigned long*
 
 	*sys_ni_sys_call = sys_ni_syscall_address;
 	*sys_call_table = sys_call_table_address;
-	memcpy((char *)entry_ids, (char *)restore, ret * sizeof(int));
-	memcpy((char*)entry_ndx, (char*)indexes, ret*sizeof(int));
+
+	memcpy((char *)restore, (char *)entry_ids, ret * sizeof(int));
+	memcpy((char*)indexes, (char*)ids, ret*sizeof(int));
+
 	return ret;
-}
-
-void reset_entries(int *entry_ndx, int num_resets){
-	int i;
-
-	for(i=0; i < num_resets; i++){
-		printk("%s: sys-call table entry %d became available again\n", LIBNAME, restore[entry_ndx[i]]);
-		restore[entry_ndx[i]] = -1;		
-	}
-	
-	return;
 }
