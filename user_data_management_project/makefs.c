@@ -119,8 +119,8 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
-		if (i - 1 < NTESTI)
-		{	
+		// if (i - 1 < NTESTI)
+		// {	
 			to_read = (i - 1) % NTESTI;
 			if (MD_SIZE + strlen(testo[to_read]) > BLK_SIZE)
 			{
@@ -172,44 +172,44 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 
-		}
-		else
-		{
+		// }
+		// else
+		// {
 
-			nbytes = SIZE;
-			block_padding = malloc(nbytes);
-			ret = write(fd, block_padding, nbytes);
+		// 	nbytes = SIZE;
+		// 	block_padding = malloc(nbytes);
+		// 	ret = write(fd, block_padding, nbytes);
 
-			if (ret != nbytes)
-			{
-				printf("The padding bytes are not written properly. Retry your mkfs\n");
-				close(fd);
-				return -1;
-			}
-			AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(i - 1));
+		// 	if (ret != nbytes)
+		// 	{
+		// 		printf("The padding bytes are not written properly. Retry your mkfs\n");
+		// 		close(fd);
+		// 		return -1;
+		// 	}
+		// 	AUDIT printf("Padding in the file block with offset %d block written sucessfully.\n", get_offset(i - 1));
 
-			metadata = set_invalid(metadata);
+		// 	metadata = set_invalid(metadata);
 
-			ret = write(fd, &metadata, MD_SIZE - POS_SIZE);
-			AUDIT printf("Metadata: %x\n", metadata);
-			if (ret != MD_SIZE - POS_SIZE)
-			{
-				printf("Writing the metadata has failed.\n");
-				close(fd);
-				return -1;
-			}
+		// 	ret = write(fd, &metadata, MD_SIZE - POS_SIZE);
+		// 	AUDIT printf("Metadata: %x\n", metadata);
+		// 	if (ret != MD_SIZE - POS_SIZE)
+		// 	{
+		// 		printf("Writing the metadata has failed.\n");
+		// 		close(fd);
+		// 		return -1;
+		// 	}
 
-			ret = write(fd, &invalid, POS_SIZE);
-			AUDIT printf("Message is at position:  %d\n", invalid);
-			if (ret != POS_SIZE)
-			{
-				printf("Writing the metadata has failed.\n");
-				close(fd);
-				return -1;
-			}
+		// 	ret = write(fd, &invalid, POS_SIZE);
+		// 	AUDIT printf("Message is at position:  %d\n", invalid);
+		// 	if (ret != POS_SIZE)
+		// 	{
+		// 		printf("Writing the metadata has failed.\n");
+		// 		close(fd);
+		// 		return -1;
+		// 	}
 			
-			AUDIT printf("File block at %d written succesfully.\n", get_offset(i - 1));
-		}
+		// 	AUDIT printf("File block at %d written succesfully.\n", get_offset(i - 1));
+		// }
 		free(block_padding);
 	}
 	close(fd);

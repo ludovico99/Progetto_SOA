@@ -234,7 +234,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
     {
         // If the mount operation is successful, then it sets the variables used to implement RCU approach and initializes the lock involved.
         mount_md.mount_point = mount_pt;
-        AUDIT printk("%s: userdatafs is succesfully mounted on from device %s and mount directory %s\n", MOD_NAME, dev_name, mount_md.mount_point);
+        AUDIT printk("%s: userdatafs is succesfully mounted on, from device %s and mount directory %s\n", MOD_NAME, dev_name, mount_md.mount_point);
 
         bdev_md.bdev = blkdev_get_by_path(dev_name, FMODE_READ | FMODE_WRITE, NULL);
         bdev_md.path = dev_name;

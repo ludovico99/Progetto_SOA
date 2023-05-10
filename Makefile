@@ -1,4 +1,4 @@
-the_usctm_dir = $(shell pwd)/user_data_management_project/the_usctm/
+the_usctm_dir = $(shell pwd)/the_usctm/
 progetto_soa_dir = $(shell pwd)/user_data_management_project/
 
 

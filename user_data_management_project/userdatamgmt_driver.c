@@ -56,7 +56,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         the_message->curr = rcu.first;
     }
 
-    if (my_off % BLK_SIZE != 0) // It means that he wants to read residual bytes of the same block
+    if (my_off % SIZE != 0) // It means that he wants to read residual bytes of the same block
     {
         AUDIT printk("%s: Reading the block partially read in the previous dev_read ...", MOD_NAME);
         read_residual_flag = true;
@@ -97,11 +97,11 @@ read:
         the_message->curr = curr_msg;
 
         if (!read_residual_flag)                   // Don't want to read residual bytes of the same block
-            my_off = (curr_msg->index) * BLK_SIZE; // Computing the new offset within the device file
+            my_off = (curr_msg->index) * SIZE; // Computing the new offset within the device file
         else
             read_residual_flag = false;
 
-        block_to_read = my_off / BLK_SIZE + 2; // the value 2 accounts for superblock and file-inode on device
+        block_to_read = my_off / SIZE + 2; // the value 2 accounts for superblock and file-inode on device
 
         // Consistency check: block_to_read must be less or equal than nblocks + 2
         if (block_to_read > nblocks + 2)
@@ -127,7 +127,7 @@ read:
         if (blk != NULL)
         {
             str_len = get_length(blk->metadata); // str_len is initialized to the message length
-            offset = my_off % BLK_SIZE;          // Residual bytes
+            offset = my_off % SIZE;          // Residual bytes
             AUDIT
             {
                 printk("%s: Block at index %d has message with length %d", MOD_NAME, get_index(block_to_read), str_len);
@@ -138,7 +138,7 @@ read:
                 size = str_len;
             else if (offset < str_len)
                 size = str_len - offset;
-            else
+            else //if offset != 0 and >= str_len means that the message has been already read
                 size = 0;
 
             if (len < size)

@@ -34,7 +34,7 @@
 #include "userdatamgmt_driver.h"
 #include "utils.h"
 #include "userdatamgmt.h"
-// #include "lib/include/usctm.h"
+#include "lib/include/usctm.h"
 
 //Contains the file system type
 #include "userdatamgmt_fs_src.c"
@@ -43,7 +43,6 @@
 //Contains the implemented file_operations
 #include "userdatamgmt_driver.c"
 
-#include "lib/usctm_lib.c"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ludovico Zarrelli");
@@ -116,7 +115,7 @@ void cleanup_module(void) {
     protect_memory();
     printk("%s: sys-call table restored to its original content\n",MOD_NAME);
 
-    reset_entries(restore, indexes, HACKED_ENTRIES);
+    reset_entries(indexes, HACKED_ENTRIES);
 
     //unregister filesystem
     ret = unregister_filesystem(&userdatafs_type);
