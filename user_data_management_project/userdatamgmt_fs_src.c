@@ -37,12 +37,6 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     sb_disk = (struct userdatafs_sb_info *)bh->b_data;
     magic = sb_disk->magic;
     brelse(bh);
-
-    bh = sb_bread(sb, USERDATAFS_FILE_INODE_NUMBER);
-    if (!bh)
-    {
-        return -EIO;
-    }
    
     // check on the expected magic number
     if (magic != sb->s_magic)
@@ -53,12 +47,17 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     sb->s_fs_info = NULL;     // FS specific data (the magic number) already reported into the generic superblock
     sb->s_op = &my_super_ops; // set our own operations
 
+    bh = sb_bread(sb, USERDATAFS_FILE_INODE_NUMBER);
+    if (!bh)
+    {
+        return -EIO;
+    }
     // check on the number of manageable blocks
     inode_disk = (struct userdatafs_inode *)bh->b_data;
-    if (inode_disk != NULL){
-        file_size = inode_disk -> file_size; // 
-        nblocks = file_size/ BLK_SIZE; //Computing the number of block in the device
-    }
+  
+    file_size = inode_disk -> file_size; 
+    nblocks = file_size / BLK_SIZE; //Computing the number of block in the device
+    
     printk("%s: number of block in the device is %d", MOD_NAME, nblocks);
     brelse(bh);
     if (NBLOCKS < nblocks)

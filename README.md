@@ -28,6 +28,7 @@ sudo make install_the_usctm
 7. [Linearizzabilità e RCU](#linearizzabilità-e-rcu)
 8. [User code](#codice-utente)
 9. [Compilazione](#compilazione-ed-esecuzione)
+10. [Solved bugs](#bug-risolti)
 
 ## Introduzione:
 Il progetto prevede la realizzazione di un linux device driver che implementi block level maintenance di messaggi utente. Un blocco del block-device ha taglia 4 KB e mantiene 6 (2 bytes per i metadati e 4 bytes per memorizzare la posizione all'interno della lista doppiamente collegata dei messaggi validi) bytes di dati utente e 4 KB - 6 bytes per i metadati. Si richiede l'implementazione di 3 system calls non nativamente supportate dal VFS:
@@ -334,3 +335,21 @@ La fase di compilazione è caratterizzata dai seguenti passi:
     Nel Makefile ci sono i comandi per selezionare la modalità da utilizzare e se generare l'eseguibile nella sua versione single-thread o in quella multi-thread. 
 
 > **NOTE:** In versioni diverse del kernel potrebbe essere necessario modificare i numeri delle system call sia nel Makefile che all'interno di /user_data_management_project/user/user.h
+
+## Bug risolti:
+1. Il problema dell'individuazione delle entry libere nella system call table è stato risolto andando a cambiare la funzione get_entries(). Il modulo the_usctm va a scrivere i seguenti parametri:
+    - sys_call_table_address: Indirizzo di memoria virtuale della system call table
+    - sys_ni_syscall_address: Indirizzo di memoria virtuale della sys_ni_syscall
+    - free_entries: Array di indici nella system call table di entry che puntano a sys_ni_syscall
+    - num_entries_found: Numero di entry libere individuate.
+
+    I module parameters di the_usctm vengono passati al modulo implementato, ancora una volta come parametri. Nell'init del suddetto modulo viene invocata get_entries() che, in base all' array di free entries, va ad individuare le entry libere all'interno della system call table. Successivamente, si fa l'unprotect della memoria e si vanno a scrivere gli indirizzi delle system call implementate (sys_put_data, sys_get_data, sys_invalidate_data) nelle entry della system call table individuate in precedenza. Infine, si esegue la protect_memory().
+
+2.  uint64_t file_size = filp->f_inode->i_size è la dimensione del file che rappresenta il block_device. Il problema è che altri threads possono modificarne il valore portando ad una possibile inconsistenza nel valutare la condizione di uscita dalla dev_read. Di conseguenza, si è deciso di salvare il valore di file_size in una variabile globale nel momento in cui si va a leggere l'inode del file mantenuto sul device (vedere [qui](/user_data_management_project/userdatamgmt_fs_src.c#L58)). In questo modo modifiche al valore di i_size da threads che hanno accesso all'inode del file non ha effetto sulla correttezza della lettura.
+
+3. Il blocco da leggere nella dev_read, in precedenza, veniva calcolato come block_to_read = my_off / BLK_SIZE + 2. In questo caso l'offset indentificava un byte in un blocco e non un byte nell'effettivo messaggio (payload). I metadati di fatto non sono dati leggibili e di conseguenza non vanno considerati nell'individuazione del blocco da leggere. Questo problema è stato risolto nei seguenti 3 passaggi:
+    1. Il blocco da leggere è block_to_read = my_off / SIZE + 2. Dividendo per SIZE, che è la dimensione massima del messaggio, si vanno ad escludere i bytes dei metadati. (vedere [qui](/user_data_management_project/userdatamgmt_driver.c#L104))
+    2. Il nuovo offset, per un nuovo blocco da leggere, all'interno del device file è un multiplo di SIZE e non piu di BLK_SIZE. (vedere [qui](/user_data_management_project/userdatamgmt_driver.c#L100))
+    3. L'offset all'interno del blocco è offset = my_off % SIZE.  (vedere [qui](/user_data_management_project/userdatamgmt_driver.c#L130))
+
+    In questo modo l'offset in input a dev_read() è interpretato come un byte all'interno del "carico utile" del device file. Di conseguenza, l'indice del blocco da leggere è calcolato in funzione del payload complessivo e non in base alla dimensione complessiva del file.
