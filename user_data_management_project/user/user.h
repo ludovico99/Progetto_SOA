@@ -1,7 +1,7 @@
 #ifndef _USER_H
 #define _USER_H
 
-#define NUM_THREADS 4 //Number of threads to be spawned
+#define NUM_THREADS 8 //Number of threads to be spawned
 #define NBLOCKS 250 //Number of blocks of the image
 #define REQS 20 // Number of system call invocation for each thread
 
