@@ -14,7 +14,7 @@
 #define SIZE (BLK_SIZE - MD_SIZE) //This macro defines the maximum size of user data (in bytes).
 #define SYNC_FLUSH 
 #define NBLOCKS 10000 //This macro defines the number of blocks manageable by the device driver.
-#define PERIOD 10000
+#define PERIOD 1000
 
 #define get_index(offset)   ((offset) - 2) //This macro retrieves the index from an offset value.
 #define get_offset(index)   ((index) + 2) //This macro retrieves the offset from an index value.
@@ -42,7 +42,7 @@
 extern struct rcu_data rcu;
 extern struct bdev_metadata bdev_md;
 extern struct mount_metadata mount_md;
-extern char mount_pt[255];
+extern struct wait_queue_head wait_queue;
 
 #define is_after(a,b)		\
 	 ((int)((b) - (a)) < 0)

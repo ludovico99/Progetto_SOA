@@ -1,6 +1,6 @@
 #define EXPORT_SYMTAB
 
-DECLARE_WAIT_QUEUE_HEAD(invalidate_queue);
+DECLARE_WAIT_QUEUE_HEAD(wait_queue);
 /*This function retrieves data from the device at a given offset and copies it to the user buffer.
 
 Parameters:
@@ -314,7 +314,7 @@ exit:
 
     index = (my_epoch & MASK) ? 1 : 0;
     __sync_fetch_and_add(&(rcu.standing[index]), 1); // Releasing a token in the correct epoch counter
-    wake_up_interruptible(&invalidate_queue);
+    wake_up_interruptible(&wait_queue);
 
     __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
     wake_up_interruptible(&unmount_queue);     // tell poll that data is ready
@@ -346,8 +346,10 @@ asmlinkage long sys_invalidate_data(int offset)
     unsigned long last_epoch;
     unsigned long updated_epoch;
     unsigned long grace_period_threads;
+    int wait_ret = 0;
     int index;
     int ret = 0;
+
 
     __sync_fetch_and_add(&(bdev_md.count), 1); // The unmount operation is not permitted
     AUDIT printk("%s: The thread %d is executing SYS_INVALIDATE_DATA\n", MOD_NAME, current->pid);
@@ -412,7 +414,11 @@ asmlinkage long sys_invalidate_data(int offset)
 
     AUDIT printk("%s: Invalidation: waiting grace-full period (target value is %ld)\n", MOD_NAME, grace_period_threads);
 
-    wait_event_interruptible(invalidate_queue, rcu.standing[index] >= grace_period_threads);
+retry:
+
+    wait_ret = wait_event_interruptible_hrtimeout(wait_queue, rcu.standing[index] >= grace_period_threads, ktime_set(0, 100));
+    if (wait_ret != 0) goto retry;
+
     rcu.standing[index] = 0;
 
     // Releasing the write lock ...

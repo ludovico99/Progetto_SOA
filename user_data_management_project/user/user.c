@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <pthread.h>
+#include <fcntl.h>
 
 #include "user.h"
 
@@ -23,8 +24,11 @@ void *multi_ops(void *index)
     int my_id = *(int *)index;
     int offset = 0;
     int ret = -1;
+    ssize_t bytes_read = 0;
     int i = 0;
     int arg = 0;
+    const char *filename = "/home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/mount/the-file";
+    int fd = -1;
 
     // 66 % READERS, 33% WRITERS
 
@@ -38,8 +42,25 @@ void *multi_ops(void *index)
     srand(time(NULL));
 
     pthread_barrier_wait(&barrier);
+
     for (i = 0; i < REQS; i++)
     {
+        if (my_id == 0)
+        {
+            fd = open(filename, O_RDONLY);
+            if (fd == -1)
+            {
+                printf("Errore nell'apertura del file, potrebbe richiedere il path assoluto\n");
+                continue;
+            }
+            memset(buffer, 0, SIZE);
+            bytes_read = read(fd, buffer, SIZE);
+            printf("DEV_READ (%ld): %s\n", bytes_read, buffer);
+            close(fd);
+            continue;
+        }
+        if (fd == -1 && my_id == 0)
+            continue;
         offset = rand() % NBLOCKS;
         switch (arg)
         {
@@ -61,12 +82,13 @@ void *multi_ops(void *index)
                 printf("The block at index %d invalidation ended with code %d\n", offset, ret);
             break;
         default:
-            printf("Syscall number inserted is invalid");
+            printf("Syscall number inserted is invalid\n");
             break;
         }
         if (ret < 0)
             printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
     }
+
     pthread_exit(0);
 }
 
@@ -149,9 +171,6 @@ void *same_blk(void *index)
     int arg;
     int op = 0;
 
-    offset = strtol(data[2], NULL, 10);
-
-    // 66 % READERS, 33% WRITERS
     if (my_id < (NUM_THREADS * 2) / 3)
         arg = GET_DATA;
     else if (my_id > (NUM_THREADS * 2) / 3 + NUM_THREADS / 6)
@@ -211,11 +230,11 @@ int main(int argc, char **argv)
     arg = strtol(argv[1], NULL, 10);
     AUDIT printf("Invoked system call with NR: %d\n", arg);
 
-    if (arg == GET_DATA && argc < 3) {
+    if (arg == GET_DATA && argc < 3)
+    {
         printf("sys_get_data needs an offset to be specified\n");
         return EXIT_FAILURE;
     }
-    
 
     switch (arg)
     {
@@ -261,7 +280,9 @@ int main(int argc, char **argv)
     num_params = argc - 2; // Total offsets passed as arguments
     AUDIT printf("num params: %d \n", num_params);
     AUDIT printf("Spawning %d threads ...\n", NUM_THREADS);
+
     pthread_barrier_init(&barrier, NULL, NUM_THREADS);
+
     for (i = 0; i < NUM_THREADS; i++)
     {
         array[i] = i;

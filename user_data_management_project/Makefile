@@ -2,9 +2,9 @@
 obj-m += progetto_soa.o 
 progetto_soa-objs += userdatamgmt.o file.o dir.o utils.o lib/usctm.o
 
-NBLOCKS = 40
+NBLOCKS = 250
 TOT_BLOCKS = $(shell expr $(NBLOCKS) + 2)
-MOUNT_DIR = /home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/mount/
+#MOUNT_DIR = /home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/mount/
 
 SYSCALL_TABLE_ADDRESS = $(shell cat /sys/module/the_usctm/parameters/sys_call_table_address)
 SYS_NI_SYSCALL_ADDRESS = $(shell cat /sys/module/the_usctm/parameters/sys_ni_syscall_address)
@@ -39,9 +39,11 @@ create-all:
 	mkdir mount
 	
 mount-fs:
-	echo $(MOUNT_DIR) > /sys/module/progetto_soa/parameters/mount_point
-	mount -o loop -t userdatafs image $(MOUNT_DIR)
+#echo $(MOUNT_DIR) > /sys/module/progetto_soa/parameters/mount_point
+#mount -o loop -t userdatafs image $(MOUNT_DIR)
+	mount -o loop -t userdatafs image ./mount
 
 unmount-fs:
-	umount $(MOUNT_DIR) ; rmdir $(MOUNT_DIR)
+#umount $(MOUNT_DIR) ; rmdir $(MOUNT_DIR)
+	umount ./mount ; rmdir ./mount
 

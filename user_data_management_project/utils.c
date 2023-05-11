@@ -1,4 +1,3 @@
-// #include <linux/math.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/kthread.h>
@@ -6,6 +5,7 @@
 
 #include "userdatamgmt_driver.h"
 #include "userdatamgmt_fs.h"
+#include "userdatamgmt.h"
 /*This function is a kernel thread function which periodically checks the grace period for RCU.
 
 Parameters:
@@ -19,7 +19,8 @@ static int house_keeper(void *unused)
     unsigned long updated_epoch;
     unsigned long grace_period_threads;
     int index;
-    DECLARE_WAIT_QUEUE_HEAD(wait_queue);
+    int wait_ret = 0;
+
     // Checks if the mount point of 'mount_md' is not equal to NULL, and returns -ENODEV if it is.
     if (mount_md.mount_point == NULL)
         return -ENODEV;
@@ -41,8 +42,13 @@ redo:
     grace_period_threads = last_epoch & (~MASK);
 
     AUDIT printk("%s: house keeping: waiting grace-full period (target index is %ld)\n",MOD_NAME, grace_period_threads);
-    // Calls wait_event_interruptible() function which waits on the 'wait_queue' until 'standing[index]' of the 'rcu' structure is greater than or equal to 'grace_period_threads' and can be interrupted by a signal.
-    wait_event_interruptible(wait_queue, rcu.standing[index] >= grace_period_threads);
+
+    // Calls wait_event_interruptible_hrtimeout() function which waits on the 'wait_queue' until 'standing[index]' of the 'rcu' structure is greater than or equal to 'grace_period_threads' or timer expires and can be interrupted by a signal
+retry:
+
+    wait_ret = wait_event_interruptible_hrtimeout(wait_queue, rcu.standing[index] >= grace_period_threads, ktime_set(0, 100));
+    if (wait_ret != 0) goto retry;
+
     // Sets 'standing[index]' attribute of the 'rcu' structure to zero.
     rcu.standing[index] = 0;
     // Releases the spin lock associated with the 'write_lock' attribute of the 'rcu' structure using spin_unlock() function.
