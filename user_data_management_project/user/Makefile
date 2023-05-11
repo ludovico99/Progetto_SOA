@@ -10,6 +10,7 @@ invalidate_data_sys_num = 174
 
 multi_ops = -1
 same_block_ops = -2
+dev_read = -3;
 
 single-thread:
 	gcc user.c -o user -lpthread 
@@ -17,6 +18,9 @@ single-thread:
 multi-thread:
 	gcc user.c -o user -lpthread -DMULTI_THREAD
 
+dev_read: 
+	./user $(dev_read)
+	
 puts:
 	./user $(put_data_sys_num)
 

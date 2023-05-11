@@ -19,7 +19,7 @@ pthread_barrier_t barrier;
 
 void *multi_ops(void *index)
 {
-    char buffer[SIZE];
+    char buffer[TO_READ];
     char write_buff[] = "Wathever content you would like.\n";
     int my_id = *(int *)index;
     int offset = 0;
@@ -31,8 +31,11 @@ void *multi_ops(void *index)
     int fd = -1;
 
     // 66 % READERS, 33% WRITERS
-
-    if (my_id < (NUM_THREADS * 2) / 3)
+    if (my_id == 0) {
+        fd = open(filename, O_RDONLY);
+        arg = DEV_READ;
+    }    
+    else if (my_id < (NUM_THREADS * 2) / 3)
         arg = GET_DATA;
     else if (my_id > (NUM_THREADS * 2) / 3 + NUM_THREADS / 6)
         arg = PUT_DATA;
@@ -45,36 +48,35 @@ void *multi_ops(void *index)
 
     for (i = 0; i < REQS; i++)
     {
-        if (my_id == 0)
-        {
-            fd = open(filename, O_RDONLY);
-            if (fd == -1)
-            {
-                printf("Errore nell'apertura del file, potrebbe richiedere il path assoluto\n");
-                continue;
-            }
-            memset(buffer, 0, SIZE);
-            bytes_read = read(fd, buffer, SIZE);
-            printf("DEV_READ (%ld): %s\n", bytes_read, buffer);
-            close(fd);
-            continue;
-        }
-        if (fd == -1 && my_id == 0)
-            continue;
+
         offset = rand() % NBLOCKS;
         switch (arg)
         {
+        case DEV_READ:
+            if (fd == -1)
+            {
+                printf("Errore nell'apertura del file, potrebbe richiedere il path assoluto\n");
+                break;
+            }
+            memset(buffer, 0, TO_READ);
+            ret = read(fd, buffer, TO_READ);
+            if (ret >= 0) {
+                buffer[ret] = '\0';          
+                printf("DEV_READ (%d): %s\n", ret, buffer);
+            }  
+            break;
         case PUT_DATA:
             ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
             if (ret >= 0)
                 printf("%s written into block at offset %d\n", write_buff, ret);
             break;
         case GET_DATA:
-            memset(buffer, 0, SIZE);
-            ret = syscall(GET_DATA, offset, buffer, SIZE);
-            buffer[SIZE] = '\0';
-            if (ret >= 0)
+            memset(buffer, 0, TO_READ);
+            ret = syscall(GET_DATA, offset, buffer, TO_READ);
+            if (ret >= 0){
+                buffer[ret] = '\0';
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
+            }
             break;
         case INVALIDATE_DATA:
             ret = syscall(INVALIDATE_DATA, offset);
@@ -88,6 +90,7 @@ void *multi_ops(void *index)
         if (ret < 0)
             printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
     }
+    if (fd != -1) close(fd);
 
     pthread_exit(0);
 }
@@ -100,7 +103,7 @@ void *my_thread(void *index)
     char **temp = &data[2];
     int count = 0;
     int upper_bound = 0;
-    char buffer[SIZE];
+    char buffer[TO_READ];
     char write_buff[] = "Wathever content you would like.\n";
     int offset = 0;
     int ret = -1;
@@ -136,11 +139,12 @@ void *my_thread(void *index)
         {
 
         case GET_DATA:
-            memset(buffer, 0, SIZE);
-            ret = syscall(GET_DATA, offset, buffer, SIZE);
-            buffer[SIZE] = '\0';
-            if (ret > 0)
+            memset(buffer, 0, TO_READ);
+            ret = syscall(GET_DATA, offset, buffer, TO_READ);
+            if (ret >= 0) {
+                buffer[ret] = '\0';
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
+            }
             break;
         case INVALIDATE_DATA:
             ret = syscall(INVALIDATE_DATA, offset);
@@ -163,7 +167,7 @@ void *my_thread(void *index)
 void *same_blk(void *index)
 {
     int my_id = *(int *)index;
-    char buffer[SIZE];
+    char buffer[TO_READ];
     char write_buff[] = "Wathever content you would like.\n";
     int offset = 0;
     int ret = -1;
@@ -189,11 +193,12 @@ void *same_blk(void *index)
                 printf("%s written into block at offset %d\n", write_buff, ret);
             break;
         case GET_DATA:
-            memset(buffer, 0, SIZE);
-            ret = syscall(GET_DATA, offset, buffer, SIZE);
-            buffer[SIZE] = '\0';
-            if (ret >= 0)
+            memset(buffer, 0, TO_READ);
+            ret = syscall(GET_DATA, offset, buffer, TO_READ);
+            if (ret >= 0){
+                buffer[ret] = '\0';
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
+            }
             break;
         case INVALIDATE_DATA:
             ret = syscall(INVALIDATE_DATA, offset);
@@ -216,10 +221,12 @@ int main(int argc, char **argv)
     int arg;
 
 #ifndef MULTI_THREAD
-    char buffer[SIZE] = "\0";
+    char buffer[TO_READ] = "\0";
     char write_buff[] = "Wathever content you would like.\n";
     int offset = 0;
     int ret = -1;
+    int fd;
+    const char * filename = "/home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/mount/the-file";
 
     if (argc < 2)
     {
@@ -238,18 +245,34 @@ int main(int argc, char **argv)
 
     switch (arg)
     {
+    case DEV_READ:
+         fd = open(filename, O_RDONLY);
+            if (fd == -1)
+            {
+                printf("Errore nell'apertura del file, potrebbe richiedere il path assoluto\n");
+                break;
+            }
+            memset(buffer, 0, TO_READ);
+            ret = read(fd, buffer, TO_READ);
+            if (ret >= 0) {
+                buffer[ret] = '\0';
+                printf("DEV_READ (%d): %s\n", ret, buffer);
+            }
+            close(fd);
+            break;
     case PUT_DATA:
         ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
         if (ret >= 0)
             AUDIT printf("%s written into block at index %d\n", write_buff, ret - 2);
         break;
     case GET_DATA:
-        memset(buffer, 0, SIZE);
+        memset(buffer, 0, TO_READ);
         offset = strtol(argv[2], NULL, 10);
-        ret = syscall(GET_DATA, offset, buffer, SIZE);
-        buffer[SIZE] = '\0';
-        if (ret >= 0)
+        ret = syscall(GET_DATA, offset, buffer, TO_READ);      
+        if (ret >= 0){
+            buffer[ret] = '\0';
             printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
+        }
         break;
     case INVALIDATE_DATA:
         offset = strtol(argv[2], NULL, 10);
