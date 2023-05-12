@@ -29,18 +29,27 @@ void *multi_ops(void *index)
     int arg = 0;
     const char *filename = "/home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/mount/the-file";
     int fd = -1;
+    int fun = my_id % 4;
 
-    // 66 % READERS, 33% WRITERS
-    if (my_id == 0) {
+    switch (fun)
+    {
+    case 0:
         fd = open(filename, O_RDONLY);
         arg = DEV_READ;
-    }    
-    else if (my_id < (NUM_THREADS * 2) / 3)
+        break;
+    case 1:
         arg = GET_DATA;
-    else if (my_id > (NUM_THREADS * 2) / 3 + NUM_THREADS / 6)
+        break;
+    case 2:
         arg = PUT_DATA;
-    else
+        break;
+    case 3:
         arg = INVALIDATE_DATA;
+        break;
+    default:
+        break;
+    }
+
 
     srand(time(NULL));
 
@@ -174,13 +183,24 @@ void *same_blk(void *index)
     int i = 0;
     int arg;
     int op = 0;
+    int fun = my_id % 3;
 
-    if (my_id < (NUM_THREADS * 2) / 3)
-        arg = GET_DATA;
-    else if (my_id > (NUM_THREADS * 2) / 3 + NUM_THREADS / 6)
-        arg = PUT_DATA;
-    else
+
+    switch (fun)
+    {
+    case 0:
+        arg = GET_DATA;;
+        break;
+    case 1:
+         arg = PUT_DATA;
+         break;
+    case 2:
         arg = INVALIDATE_DATA;
+        break;
+
+    default:
+        break;
+    }
 
     pthread_barrier_wait(&barrier);
     for (i = 0; i < REQS; i++)
