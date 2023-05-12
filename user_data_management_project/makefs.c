@@ -10,7 +10,6 @@
 #include "userdatamgmt_fs.h"
 #define NTESTI 20
 
-
 char *testo[] = {
 	"I have a dream  - Martin Luther King Jr\n",
 	"Ask not what your country can do for you, ask what you can do for your country  - John F. Kennedy\n",

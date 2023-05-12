@@ -42,7 +42,6 @@
 #include <linux/syscalls.h>
 #include "./include/vtpmo.h"
 
-
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Francesco Quaglia <framcesco.quaglia@uniroma2.it>");
 MODULE_DESCRIPTION("USCTM");
@@ -77,10 +76,6 @@ module_param(sys_ni_syscall_address, ulong, 0660);
 
 int free_entries[MAX_FREE];
 module_param_array(free_entries, int, NULL, 0660); // default array size already known - here we expose what entries are free
-
-int num_entries_found = 0;
-module_param(num_entries_found, int, 0660);
-
 
 int good_area(unsigned long *addr)
 {
@@ -155,8 +150,6 @@ void syscall_table_finder(void)
 	}
 }
 
-
-
 int init_module(void)
 {
 
@@ -181,7 +174,7 @@ int init_module(void)
 			if (j >= MAX_FREE)
 				break;
 		}
-	num_entries_found = j;
+
 	printk("%s: module correctly mounted\n", LIBNAME);
 
 	return 0;

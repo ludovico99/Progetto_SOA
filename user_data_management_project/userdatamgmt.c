@@ -36,19 +36,18 @@
 #include "userdatamgmt.h"
 #include "lib/include/usctm.h"
 
-//Contains the file system type
+// Contains the file system type
 #include "userdatamgmt_fs_src.c"
-//Contains the implemented system call
+// Contains the implemented system call
 #include "userdatamgmt_sc.c"
-//Contains the implemented file_operations
+// Contains the implemented file_operations
 #include "userdatamgmt_driver.c"
-
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ludovico Zarrelli");
 MODULE_DESCRIPTION("BLOCK-LEVEL DATA MANAGEMENT SERVICE");
 
-char mount_pt[255]  = "/";
+char mount_pt[255] = "/";
 module_param_string(mount_point, mount_pt, 255, 0660);
 
 unsigned long the_syscall_table = 0x0;
@@ -56,75 +55,74 @@ unsigned long the_syscall_table = 0x0;
 unsigned long the_ni_syscall;
 
 unsigned long new_sys_call_array[] = {0x0, 0x0, 0x0};
-#define HACKED_ENTRIES (int)(sizeof(new_sys_call_array)/sizeof(unsigned long))
+#define HACKED_ENTRIES (int)(sizeof(new_sys_call_array) / sizeof(unsigned long))
 
-int indexes[MAX_ACQUIRES] = {[0 ... (MAX_ACQUIRES-1)] -1};
+int indexes[MAX_ACQUIRES] = {[0 ...(MAX_ACQUIRES - 1)] - 1};
 
-
-int init_module(void) {
+int init_module(void)
+{
 
     int ret;
     int i = 0;
 
-    
-    printk("%s: dev example received sys_call_table address %px\n",MOD_NAME,(void*)sys_call_table_address);
-    printk("%s: initializing - hacked entries %d\n",MOD_NAME,HACKED_ENTRIES);
-    
+    printk("%s: dev example received sys_call_table address %px\n", MOD_NAME, (void *)sys_call_table_address);
+    printk("%s: initializing - hacked entries %d\n", MOD_NAME, HACKED_ENTRIES);
 
     new_sys_call_array[0] = (unsigned long)sys_put_data;
     new_sys_call_array[1] = (unsigned long)sys_get_data;
     new_sys_call_array[2] = (unsigned long)sys_invalidate_data;
 
-    ret = get_entries (HACKED_ENTRIES, &the_syscall_table, &the_ni_syscall);
+    ret = get_entries(HACKED_ENTRIES, &the_syscall_table, &the_ni_syscall);
 
-    if (ret != HACKED_ENTRIES){
-            printk("%s: could not hack %d entries (just %d)\n",MOD_NAME,HACKED_ENTRIES,ret);
-            return -1;
-     }
+    if (ret != HACKED_ENTRIES)
+    {
+        printk("%s: could not hack %d entries (just %d)\n", MOD_NAME, HACKED_ENTRIES, ret);
+        return -1;
+    }
 
     unprotect_memory();
 
-    for(i=0;i<HACKED_ENTRIES;i++){
-            ((unsigned long *)the_syscall_table)[restore[indexes[i]]] = (unsigned long)new_sys_call_array[i];
+    for (i = 0; i < HACKED_ENTRIES; i++)
+    {
+        ((unsigned long *)the_syscall_table)[restore[indexes[i]]] = (unsigned long)new_sys_call_array[i];
     }
 
     protect_memory();
 
-    printk("%s: all new system-calls correctly installed on sys-call table\n",MOD_NAME);
+    printk("%s: all new system-calls correctly installed on sys-call table\n", MOD_NAME);
 
-    //register filesystem
+    // register filesystem
     ret = register_filesystem(&userdatafs_type);
     if (likely(ret == 0))
-        printk("%s: sucessfully registered userdatafs\n",MOD_NAME);
+        printk("%s: sucessfully registered userdatafs\n", MOD_NAME);
     else
-        printk("%s: failed to register userdatafs - error %d", MOD_NAME,ret);
+        printk("%s: failed to register userdatafs - error %d", MOD_NAME, ret);
 
     return 0;
 }
 
-void cleanup_module(void) {
+void cleanup_module(void)
+{
 
     int ret;
     int i = 0;
-    printk("%s: shutting down\n",MOD_NAME);
+    printk("%s: shutting down\n", MOD_NAME);
 
     unprotect_memory();
-    for(i=0;i<HACKED_ENTRIES;i++){
-            ((unsigned long *)the_syscall_table)[restore[indexes[i]]] = the_ni_syscall;
-            printk("%s: sys-call table entry %d became available again\n", MOD_NAME, restore[indexes[i]]);
-            restore[indexes[i]] = -1;
+    for (i = 0; i < HACKED_ENTRIES; i++)
+    {
+        ((unsigned long *)the_syscall_table)[restore[indexes[i]]] = the_ni_syscall;
+        printk("%s: sys-call table entry %d became available again\n", MOD_NAME, restore[indexes[i]]);
+        restore[indexes[i]] = -1;
     }
     protect_memory();
-    printk("%s: sys-call table restored to its original content\n",MOD_NAME);
+    printk("%s: sys-call table restored to its original content\n", MOD_NAME);
 
-    //unregister filesystem
+    // unregister filesystem
     ret = unregister_filesystem(&userdatafs_type);
 
     if (likely(ret == 0))
-        printk("%s: sucessfully unregistered file system driver\n",MOD_NAME);
+        printk("%s: sucessfully unregistered file system driver\n", MOD_NAME);
     else
         printk("%s: failed to unregister driver - error %d", MOD_NAME, ret);
 }
-
-
-

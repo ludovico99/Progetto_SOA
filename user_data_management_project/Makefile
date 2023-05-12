@@ -8,8 +8,6 @@ TOT_BLOCKS = $(shell expr $(NBLOCKS) + 2)
 
 SYSCALL_TABLE_ADDRESS = $(shell cat /sys/module/the_usctm/parameters/sys_call_table_address)
 SYS_NI_SYSCALL_ADDRESS = $(shell cat /sys/module/the_usctm/parameters/sys_ni_syscall_address)
-
-NUM_SYSCALL_ENTRIES_FOUND = $(shell cat /sys/module/the_usctm/parameters/num_entries_found)
 FREE_ENTRIES = $(shell cat /sys/module/the_usctm/parameters/free_entries)
 
 all:
@@ -28,7 +26,7 @@ clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) clean
 	
 install_progetto_soa:
-	insmod progetto_soa.ko sys_call_table_address=$(SYSCALL_TABLE_ADDRESS) sys_ni_syscall_address=$(SYS_NI_SYSCALL_ADDRESS) free_entries=$(FREE_ENTRIES) num_entries_found=$(NUM_SYSCALL_ENTRIES_FOUND)
+	insmod progetto_soa.ko sys_call_table_address=$(SYSCALL_TABLE_ADDRESS) sys_ni_syscall_address=$(SYS_NI_SYSCALL_ADDRESS) free_entries=$(FREE_ENTRIES)
 	
 remove_progetto_soa:
 	rmmod progetto_soa

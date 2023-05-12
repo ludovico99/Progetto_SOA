@@ -31,12 +31,9 @@ unsigned long sys_ni_syscall_address = 0x0;
 module_param(sys_ni_syscall_address, ulong, 0660);
 
 int free_entries[MAX_FREE];
-module_param_array(free_entries,int,NULL,0660);//default array size already known - here we expect to receive what entries are free
+module_param_array(free_entries, int, NULL, 0660); // default array size already known - here we expect to receive what entries are free
 
-int num_entries_found = 0;
-module_param(num_entries_found, int, 0660);
-
-int restore[MAX_ACQUIRES] = {[0 ... (MAX_ACQUIRES-1)] -1};
+int restore[MAX_ACQUIRES] = {[0 ...(MAX_ACQUIRES - 1)] - 1};
 
 unsigned long cr0;
 
@@ -56,25 +53,23 @@ inline void protect_memory(void)
 }
 
 inline void unprotect_memory(void)
-{	
+{
 	cr0 = read_cr0();
 	write_cr0_forced(cr0 & ~X86_CR0_WP);
 }
 
-
-
-int get_entries(int num_acquires, unsigned long* sys_call_table, unsigned long *sys_ni_sys_call)
+int get_entries(int num_acquires, unsigned long *sys_call_table, unsigned long *sys_ni_sys_call)
 {
 
 	int ret = 0;
 	int i = 0;
 
-	int ids[MAX_ACQUIRES] = {[0 ... (MAX_ACQUIRES-1)] -1};
-	int entry_ids[MAX_ACQUIRES] = {[0 ... (MAX_ACQUIRES-1)] -1};
+	int ids[MAX_ACQUIRES] = {[0 ...(MAX_ACQUIRES - 1)] - 1};
+	int entry_ids[MAX_ACQUIRES] = {[0 ...(MAX_ACQUIRES - 1)] - 1};
 
 	printk("%s: trying to get %d entries from the sys-call table at address %px\n", LIBNAME, num_acquires, (void *)sys_call_table_address);
 
-	if (num_acquires > num_entries_found)
+	if (num_acquires > MAX_FREE)
 	{
 		printk("%s: No more entries available\n", LIBNAME);
 		return -1;
@@ -91,18 +86,20 @@ int get_entries(int num_acquires, unsigned long* sys_call_table, unsigned long *
 		return -1;
 	}
 
-	for (i = 0; i < num_entries_found && ret < num_acquires; i++)
-	{	
+	for (i = 0; i < MAX_ACQUIRES && ret < num_acquires; i++)
+	{
 		if (restore[i] == -1)
-		{	
-			printk("%s: acquiring table entry %d\n",LIBNAME,free_entries[i]);
+		{
+			printk("%s: acquiring table entry %d\n", LIBNAME, free_entries[i]);
 			entry_ids[i] = free_entries[i];
 			ids[i] = i;
 			ret++;
 		}
 	}
 
-	if(ret != num_acquires){
+	if (ret < num_acquires)
+	{
+		printk("%s:some entries have already been acquired, there are not enough available\n", LIBNAME);
 		return -1;
 	}
 
@@ -110,7 +107,7 @@ int get_entries(int num_acquires, unsigned long* sys_call_table, unsigned long *
 	*sys_call_table = sys_call_table_address;
 
 	memcpy((char *)restore, (char *)entry_ids, ret * sizeof(int));
-	memcpy((char*)indexes, (char*)ids, ret*sizeof(int));
+	memcpy((char *)indexes, (char *)ids, ret * sizeof(int));
 
 	return ret;
 }

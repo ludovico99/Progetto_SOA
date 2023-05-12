@@ -26,7 +26,7 @@ static int house_keeper(void *unused)
         return -ENODEV;
 redo:
     msleep(PERIOD);
-    AUDIT printk("%s: house keeper re-started\n",MOD_NAME);
+    AUDIT printk("%s: house keeper re-started\n", MOD_NAME);
     // Acquires the spin lock associated with the 'write_lock' attribute of the 'rcu' structure using spin_lock() function.
     spin_lock(&(rcu.write_lock));
     // Updates the 'updated_epoch' variable by assigning MASK if 'next_epoch_index' attribute of the 'rcu' structure is non-zero, else assigns 0 to it.
@@ -41,13 +41,14 @@ redo:
     // Computes the value of 'grace_period_threads' as the value of 'last_epoch' without the least significant bit.
     grace_period_threads = last_epoch & (~MASK);
 
-    AUDIT printk("%s: house keeping: waiting grace-full period (target index is %ld)\n",MOD_NAME, grace_period_threads);
+    AUDIT printk("%s: house keeping: waiting grace-full period (target index is %ld)\n", MOD_NAME, grace_period_threads);
 
     // Calls wait_event_interruptible_hrtimeout() function which waits on the 'wait_queue' until 'standing[index]' of the 'rcu' structure is greater than or equal to 'grace_period_threads' or timer expires and can be interrupted by a signal
 retry:
 
     wait_ret = wait_event_interruptible_hrtimeout(wait_queue, rcu.standing[index] >= grace_period_threads, ktime_set(0, 100));
-    if (wait_ret != 0) goto retry;
+    if (wait_ret != 0)
+        goto retry;
 
     // Sets 'standing[index]' attribute of the 'rcu' structure to zero.
     rcu.standing[index] = 0;
@@ -126,15 +127,15 @@ struct message *to_insert: Pointer to the message to be inserted
 Return Value:
 This function does not return anything.*/
 void insert_sorted(struct message **head, struct message **tail, struct message *to_insert)
-{   
+{
     struct message *curr = NULL;
     int position = 0;
 
-    if (to_insert == NULL) return;
+    if (to_insert == NULL)
+        return;
     position = to_insert->ordering.position;
     to_insert->prev = *tail;
     to_insert->next = NULL;
-
 
     if (*head == NULL)
     { // se la lista è vuota
@@ -144,7 +145,7 @@ void insert_sorted(struct message **head, struct message **tail, struct message 
     else
     {
         curr = *head;
-        while (curr != NULL &&  is_before(curr->ordering.position, position)) //to avoid overflow comparison
+        while (curr != NULL && is_before(curr->ordering.position, position)) // to avoid overflow comparison
         {
             curr = curr->next;
         }
@@ -297,7 +298,7 @@ struct message *lookup_by_insert_index(struct message *head, unsigned int insert
 {
 
     struct message *curr = head;
-    while (curr != NULL && is_before(curr->ordering.insert_index, insert_index)) //to avoid overflow comparison
+    while (curr != NULL && is_before(curr->ordering.insert_index, insert_index)) // to avoid overflow comparison
     {
         curr = curr->next;
     }
@@ -323,10 +324,10 @@ struct message *lookup_by_index(struct message *head, int index)
 }
 
 // swapNodes takes 2 parameters two nodes to be swapped.
-void swapNodes(struct message *node1, struct message *node2)
-{   
+static void swapNodes(struct message *node1, struct message *node2)
+{
     int temp;
-    struct blk_element * temp_elem;
+    struct blk_element *temp_elem;
 
     if (node1 == node2)
     {
@@ -347,7 +348,6 @@ void swapNodes(struct message *node1, struct message *node2)
     temp_elem = node1->elem;
     node1->elem = node2->elem;
     node2->elem = temp_elem;
-
 }
 
 /*partition takes two nodes as its parameters, a lower node and a higher node. It finds the pivot by selecting the last item in the list,
@@ -356,7 +356,7 @@ If it is, it swaps that node with the node at the 'i' insert_index, where 'i' is
 When all items up until the high node have been processed in this way,
 then the node at the 'i' insert_index is swapped with the high node thereby providing us with the pivot element.*/
 static struct message *partition(struct message *start, struct message *end)
-{   
+{
     struct message *pivot = end;
     struct message *i = start->prev;
     struct message *j = NULL;
@@ -366,8 +366,8 @@ static struct message *partition(struct message *start, struct message *end)
 
     for (j = start; j != end; j = j->next)
     {
-        if (is_before_eq(j->ordering.insert_index, pivot->ordering.insert_index)) //to avoid overflow comparison
-        {   
+        if (is_before_eq(j->ordering.insert_index, pivot->ordering.insert_index)) // to avoid overflow comparison
+        {
             i = (i == NULL ? start : i->next);
             swapNodes(i, j);
         }
@@ -381,7 +381,7 @@ static struct message *partition(struct message *start, struct message *end)
  it calls findPivot to get the pivot element, then recursively calls quickSort function for the lower half and upper half of the linked list based on the pivot element.
  The resulting sorted list is obtained by combining the two halves.*/
 void quickSort(struct message *start, struct message *end)
-{   
+{
     struct message *pivot = NULL;
     if (start == NULL || start == end || start == end->next)
         return;

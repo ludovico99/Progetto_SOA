@@ -50,7 +50,6 @@ void *multi_ops(void *index)
         break;
     }
 
-
     srand(time(NULL));
 
     pthread_barrier_wait(&barrier);
@@ -69,10 +68,11 @@ void *multi_ops(void *index)
             }
             memset(buffer, 0, TO_READ);
             ret = read(fd, buffer, TO_READ);
-            if (ret >= 0) {
-                buffer[ret] = '\0';          
+            if (ret >= 0)
+            {
+                buffer[ret] = '\0';
                 printf("DEV_READ (%d): %s\n", ret, buffer);
-            }  
+            }
             break;
         case PUT_DATA:
             ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
@@ -82,7 +82,8 @@ void *multi_ops(void *index)
         case GET_DATA:
             memset(buffer, 0, TO_READ);
             ret = syscall(GET_DATA, offset, buffer, TO_READ);
-            if (ret >= 0){
+            if (ret >= 0)
+            {
                 buffer[ret] = '\0';
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
             }
@@ -99,7 +100,8 @@ void *multi_ops(void *index)
         if (ret < 0)
             printf("The system call %d ended with the following error message: %s\n", arg, strerror(-ret));
     }
-    if (fd != -1) close(fd);
+    if (fd != -1)
+        close(fd);
 
     pthread_exit(0);
 }
@@ -150,7 +152,8 @@ void *my_thread(void *index)
         case GET_DATA:
             memset(buffer, 0, TO_READ);
             ret = syscall(GET_DATA, offset, buffer, TO_READ);
-            if (ret >= 0) {
+            if (ret >= 0)
+            {
                 buffer[ret] = '\0';
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
             }
@@ -185,15 +188,15 @@ void *same_blk(void *index)
     int op = 0;
     int fun = my_id % 3;
 
-
     switch (fun)
     {
     case 0:
-        arg = GET_DATA;;
+        arg = GET_DATA;
+        ;
         break;
     case 1:
-         arg = PUT_DATA;
-         break;
+        arg = PUT_DATA;
+        break;
     case 2:
         arg = INVALIDATE_DATA;
         break;
@@ -215,7 +218,8 @@ void *same_blk(void *index)
         case GET_DATA:
             memset(buffer, 0, TO_READ);
             ret = syscall(GET_DATA, offset, buffer, TO_READ);
-            if (ret >= 0){
+            if (ret >= 0)
+            {
                 buffer[ret] = '\0';
                 printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
             }
@@ -246,7 +250,7 @@ int main(int argc, char **argv)
     int offset = 0;
     int ret = -1;
     int fd;
-    const char * filename = "/home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/mount/the-file";
+    const char *filename = "/home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/mount/the-file";
 
     if (argc < 2)
     {
@@ -266,20 +270,21 @@ int main(int argc, char **argv)
     switch (arg)
     {
     case DEV_READ:
-         fd = open(filename, O_RDONLY);
-            if (fd == -1)
-            {
-                printf("Errore nell'apertura del file, potrebbe richiedere il path assoluto\n");
-                break;
-            }
-            memset(buffer, 0, TO_READ);
-            ret = read(fd, buffer, TO_READ);
-            if (ret >= 0) {
-                buffer[ret] = '\0';
-                printf("DEV_READ (%d): %s\n", ret, buffer);
-            }
-            close(fd);
+        fd = open(filename, O_RDONLY);
+        if (fd == -1)
+        {
+            printf("Errore nell'apertura del file, potrebbe richiedere il path assoluto\n");
             break;
+        }
+        memset(buffer, 0, TO_READ);
+        ret = read(fd, buffer, TO_READ);
+        if (ret >= 0)
+        {
+            buffer[ret] = '\0';
+            printf("DEV_READ (%d): %s\n", ret, buffer);
+        }
+        close(fd);
+        break;
     case PUT_DATA:
         ret = syscall(PUT_DATA, write_buff, strlen(write_buff));
         if (ret >= 0)
@@ -288,8 +293,9 @@ int main(int argc, char **argv)
     case GET_DATA:
         memset(buffer, 0, TO_READ);
         offset = strtol(argv[2], NULL, 10);
-        ret = syscall(GET_DATA, offset, buffer, TO_READ);      
-        if (ret >= 0){
+        ret = syscall(GET_DATA, offset, buffer, TO_READ);
+        if (ret >= 0)
+        {
             buffer[ret] = '\0';
             printf("Bytes read (%d) from block at index %d: %s\n", ret, offset, buffer);
         }

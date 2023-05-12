@@ -128,7 +128,8 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         goto all;
     }
     the_dev_blk = (struct dev_blk *)bh->b_data;
-    if (the_dev_blk == NULL){
+    if (the_dev_blk == NULL)
+    {
         printk("%s: dev_blk ptr is NULL", MOD_NAME);
         kfree(the_message);
         brelse(bh);
@@ -187,12 +188,8 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         AUDIT printk("%s: Thread with PID %d has correctly completed the put operation", MOD_NAME, current->pid);
     }
 
-all:
-    // Releases the write lock of the rcu structure.
-    spin_unlock(&(rcu.write_lock));
-
 #ifdef SYNC_FLUSH
-    if (ret >= 0)
+    if (ret >= 0 && bh != NULL)
     {
         if (sync_dirty_buffer(bh) == 0)
         {
@@ -202,8 +199,13 @@ all:
         {
             printk("%s: Synchronous flush not succeded", MOD_NAME);
         }
-    } brelse(bh);
+    }
+    brelse(bh);
 #endif
+
+all:
+    // Releases the write lock of the rcu structure.
+    spin_unlock(&(rcu.write_lock));
 
 free:
     // Frees the memory allocated with kzalloc
@@ -290,8 +292,8 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     {
 
         msg_len = get_length(dev_blk->metadata);
-        
-        while (ret != 0) //It should never fail because len is costrained to the size of the buffer
+
+        while (ret != 0) // It should never fail because len is costrained to the size of the buffer
         {
             AUDIT printk("%s: Thread with PID %d is reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, current->pid, offset, off, msg_len - off);
             if (off == 0)
@@ -301,10 +303,11 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
             else
                 len = 0;
 
-            if (size < len) len = size; //If the size of the buffer is less than len then len is costrained to size
+            if (size < len)
+                len = size; // If the size of the buffer is less than len then len is costrained to size
 
             ret = copy_to_user(destination + off, dev_blk->data + off, len); // Returns number of bytes that could not be copied
-            off += len - ret;                                          // Residual bytes
+            off += len - ret;                                                // Residual bytes
         }
         AUDIT printk("%s: Thread with PID %d has completed the read operation ...", MOD_NAME, current->pid);
         ret = len - ret;
@@ -349,7 +352,6 @@ asmlinkage long sys_invalidate_data(int offset)
     int wait_ret = 0;
     int index;
     int ret = 0;
-
 
     __sync_fetch_and_add(&(bdev_md.count), 1); // The unmount operation is not permitted
     AUDIT printk("%s: The thread %d is executing SYS_INVALIDATE_DATA\n", MOD_NAME, current->pid);
@@ -417,7 +419,8 @@ asmlinkage long sys_invalidate_data(int offset)
 retry:
 
     wait_ret = wait_event_interruptible_hrtimeout(wait_queue, rcu.standing[index] >= grace_period_threads, ktime_set(0, 100));
-    if (wait_ret != 0) goto retry;
+    if (wait_ret != 0)
+        goto retry;
 
     rcu.standing[index] = 0;
 

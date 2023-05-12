@@ -4,8 +4,8 @@ struct bdev_metadata bdev_md = {0, NULL, NULL};
 struct mount_metadata mount_md = {false, "/"};
 struct rcu_data rcu;
 
-int nblocks = 0; // Real number of blocks into the device
-uint64_t file_size = 0; //Size of the file that represent the block device
+int nblocks = 0;           // Real number of blocks into the device
+uint64_t file_size = 0;    // Size of the file that represent the block device
 struct blk_element **head; // It's the array of block's metadata
 
 unsigned int num_insertions = 0;
@@ -37,7 +37,7 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     sb_disk = (struct userdatafs_sb_info *)bh->b_data;
     magic = sb_disk->magic;
     brelse(bh);
-   
+
     // check on the expected magic number
     if (magic != sb->s_magic)
     {
@@ -54,10 +54,10 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     }
     // check on the number of manageable blocks
     inode_disk = (struct userdatafs_inode *)bh->b_data;
-  
-    file_size = inode_disk -> file_size; 
-    nblocks = file_size / BLK_SIZE; //Computing the number of block in the device
-    
+
+    file_size = inode_disk->file_size;
+    nblocks = file_size / BLK_SIZE; // Computing the number of block in the device
+
     printk("%s: number of block in the device is %d", MOD_NAME, nblocks);
     brelse(bh);
     if (NBLOCKS < nblocks)
@@ -131,7 +131,8 @@ static void userdatafs_kill_superblock(struct super_block *s)
     /*puts the current process to sleep until the condition (bdev_md.count == 0) is true or an interrupt is received.*/
     wait_event_interruptible(unmount_queue, bdev_md.count == 0);
 
-    if (head == NULL){
+    if (head == NULL)
+    {
         printk("%s: head of the array of metadata is null ...", MOD_NAME);
         goto exit;
     }
@@ -179,17 +180,21 @@ static void userdatafs_kill_superblock(struct super_block *s)
     }
 
 exit:
-    if (bdev_md.bdev != NULL) blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
+    if (bdev_md.bdev != NULL)
+        blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE);
 
     /*After all pending threads have finished, it calls kill_block_super() to release resources associated with the superblock.*/
-    if (s != NULL) kill_block_super(s);
+    if (s != NULL)
+        kill_block_super(s);
 
     AUDIT printk("%s: Freeing the struct allocated in the kernel memory", MOD_NAME);
 
-    if (head != NULL) free_array(head);
+    if (head != NULL)
+        free_array(head);
 
     // Freeing the double linked list of valid messages...
-    if (rcu.first != NULL) free_list(rcu.first);
+    if (rcu.first != NULL)
+        free_list(rcu.first);
     // Finally, it prints a log message indicating that unmount was successful and returns.
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;
@@ -303,14 +308,14 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
                     insert_sorted(&rcu.first, &rcu.last, message);
 
                     /*decomment the previous line in case you want to use the Quick Sort*/
-                    //insert(&rcu.first, &rcu.last, message);
+                    // insert(&rcu.first, &rcu.last, message);
                 }
             }
             brelse(bh);
         }
         /*Quick sort has been implemented for performance reasons. To avoid too many recursions is commented and
         the iterative version with upper bound O(n^2) is preferred. */
-        //quickSort(rcu.first, rcu.last); // Sorting with upper bound O(n*log(n))
+        // quickSort(rcu.first, rcu.last); // Sorting with upper bound O(n*log(n))
         if (rcu.last != NULL)
             num_insertions = rcu.last->ordering.position; // Set the value of total number of insertions to the number of valid messages...
 
@@ -320,7 +325,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
             if (head != NULL)
                 free_array(head); // freeing the array of metadata
             if (rcu.first != NULL)
-                free_list(rcu.first);                       // freeing the double linked list
+                free_list(rcu.first);                           // freeing the double linked list
             blkdev_put(bdev_md.bdev, FMODE_READ | FMODE_WRITE); // blkdev_get_by_path has been invoked
         }
     }

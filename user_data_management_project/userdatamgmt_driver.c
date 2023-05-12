@@ -73,8 +73,8 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     else if (the_message->curr == NULL || the_message->curr->prev == NULL || the_message->curr->prev->next != the_message->curr)
     {
         // The current block has been invalidated. Let's read the following one. Don't need to read residual bytes of the following message
-        read_residual_flag = false; 
-        
+        read_residual_flag = false;
+
         the_message->insert_index++;
 
         the_message->curr = lookup_by_insert_index(rcu.first, the_message->insert_index);
@@ -96,7 +96,7 @@ read:
         the_message->insert_index = curr_msg->ordering.insert_index;
         the_message->curr = curr_msg;
 
-        if (!read_residual_flag)                   // Don't want to read residual bytes of the same block
+        if (!read_residual_flag)               // Don't want to read residual bytes of the same block
             my_off = (curr_msg->index) * SIZE; // Computing the new offset within the device file
         else
             read_residual_flag = false;
@@ -127,7 +127,7 @@ read:
         if (blk != NULL)
         {
             str_len = get_length(blk->metadata); // str_len is initialized to the message length
-            offset = my_off % SIZE;          // Residual bytes
+            offset = my_off % SIZE;              // Residual bytes
             AUDIT
             {
                 printk("%s: Block at index %d has message with length %d", MOD_NAME, get_index(block_to_read), str_len);
@@ -138,7 +138,7 @@ read:
                 size = str_len;
             else if (offset < str_len)
                 size = str_len - offset;
-            else //if offset != 0 and >= str_len means that the message has been already read
+            else // if offset != 0 and >= str_len means that the message has been already read
                 size = 0;
 
             if (len < size)
