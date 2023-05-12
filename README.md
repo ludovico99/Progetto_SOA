@@ -365,7 +365,6 @@ La fase di compilazione è caratterizzata dai seguenti passi:
     - sys_call_table_address: Indirizzo di memoria virtuale della system call table
     - sys_ni_syscall_address: Indirizzo di memoria virtuale della sys_ni_syscall
     - free_entries: Array di indici nella system call table di entry che puntano a sys_ni_syscall
-    - num_entries_found: Numero di entry libere individuate.
 
     I module parameters di the_usctm vengono passati al modulo implementato, ancora una volta come parametri. Nell'init del suddetto modulo viene invocata get_entries() che, in base all' array di free entries, va ad individuare le entry libere all'interno della system call table. Successivamente, si fa l'unprotect della memoria e si vanno a scrivere gli indirizzi delle system call implementate (sys_put_data, sys_get_data, sys_invalidate_data) nelle entry della system call table individuate in precedenza. Infine, si esegue la protect_memory().
 
