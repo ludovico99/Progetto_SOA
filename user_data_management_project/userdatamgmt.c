@@ -106,6 +106,7 @@ void cleanup_module(void)
 
     int ret;
     int i = 0;
+
     printk("%s: shutting down\n", MOD_NAME);
 
     unprotect_memory();
@@ -125,4 +126,5 @@ void cleanup_module(void)
         printk("%s: sucessfully unregistered file system driver\n", MOD_NAME);
     else
         printk("%s: failed to unregister driver - error %d", MOD_NAME, ret);
+
 }

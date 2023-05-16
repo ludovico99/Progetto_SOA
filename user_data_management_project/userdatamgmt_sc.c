@@ -245,7 +245,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
     int len = 0;
     int ret = -1;
     int index;
-    loff_t off = 0;
+
 
     __sync_fetch_and_add(&(bdev_md.count), 1); // The unmount operation is not permitted
     AUDIT printk("%s: Thread with PID %d is executing SYS_GET_DATA \n", MOD_NAME, current->pid);
@@ -293,25 +293,17 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 
         msg_len = get_length(dev_blk->metadata);
 
-        while (ret != 0) // It should never fail because len is costrained to the size of the buffer
-        {
-            AUDIT printk("%s: Thread with PID %d is reading the block at index %d with offset within the block %lld and residual bytes %lld", MOD_NAME, current->pid, offset, off, msg_len - off);
-            if (off == 0)
-                len = msg_len;
-            else if (off < msg_len)
-                len = msg_len - off;
-            else
-                len = 0;
+        AUDIT printk("%s: Thread with PID %d is reading the block at index %d", MOD_NAME, current->pid, offset);
+        len = msg_len;
 
-            if (size < len)
-                len = size; // If the size of the buffer is less than len then len is costrained to size
+        if (size < len)
+            len = size; // If the size of the buffer is less than len then len is costrained to size
 
-            ret = copy_to_user(destination + off, dev_blk->data + off, len); // Returns number of bytes that could not be copied
-            off += len - ret;                                                // Residual bytes
-        }
-        AUDIT printk("%s: Thread with PID %d has completed the read operation ...", MOD_NAME, current->pid);
-        ret = len - ret;
+        ret = copy_to_user(destination, dev_blk->data, len); // Returns number of bytes that could not be copied
     }
+    AUDIT printk("%s: Thread with PID %d has completed the read operation ...", MOD_NAME, current->pid);
+    ret = len - ret;
+
     brelse(bh);
 exit:
 

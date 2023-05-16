@@ -6,6 +6,7 @@
 #include "userdatamgmt_driver.h"
 #include "userdatamgmt_fs.h"
 #include "userdatamgmt.h"
+
 /*This function is a kernel thread function which periodically checks the grace period for RCU.
 
 Parameters:
@@ -25,6 +26,7 @@ static int house_keeper(void *unused)
     if (mount_md.mount_point == NULL)
         return -ENODEV;
 redo:
+    if (kthread_should_stop()) goto exit;
     msleep(PERIOD);
     AUDIT printk("%s: house keeper re-started\n", MOD_NAME);
     // Acquires the spin lock associated with the 'write_lock' attribute of the 'rcu' structure using spin_lock() function.
@@ -57,6 +59,7 @@ retry:
     // Uses goto statement to go back to the redo label and repeat the above steps in an infinite loop.
     goto redo;
 
+exit:
     return 0;
 }
 
@@ -70,8 +73,7 @@ void init(struct rcu_data *t)
 
     int i;
     char name[128] = "the_daemon";
-    struct task_struct *the_daemon;
-
+    
     t->epoch = 0x0;
     t->next_epoch_index = 0x1;
     for (i = 0; i < EPOCHS; i++)
@@ -81,7 +83,9 @@ void init(struct rcu_data *t)
     t->first = NULL;
     t->last = NULL;
     spin_lock_init(&t->write_lock);
-    the_daemon = kthread_create(house_keeper, NULL, name);
+
+    if (the_daemon == NULL) the_daemon = kthread_create(house_keeper, NULL, name);
+    else printk("%s: kernel thread already exists", MOD_NAME);
 
     if (the_daemon)
     {

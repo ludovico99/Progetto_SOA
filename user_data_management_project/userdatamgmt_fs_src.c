@@ -3,7 +3,7 @@
 struct bdev_metadata bdev_md = {0, NULL, NULL};
 struct mount_metadata mount_md = {false, "/"};
 struct rcu_data rcu;
-
+struct task_struct *the_daemon = NULL;
 int nblocks = 0;           // Real number of blocks into the device
 uint64_t file_size = 0;    // Size of the file that represent the block device
 struct blk_element **head; // It's the array of block's metadata
@@ -195,6 +195,13 @@ exit:
     // Freeing the double linked list of valid messages...
     if (rcu.first != NULL)
         free_list(rcu.first);
+
+    wake_up_interruptible(&wait_queue);
+    if (the_daemon != NULL) {
+        AUDIT printk("%s: Stopping the kernel daemon ...", MOD_NAME);
+        kthread_stop(the_daemon);
+    }
+
     // Finally, it prints a log message indicating that unmount was successful and returns.
     printk(KERN_INFO "%s: userdatafs unmount succesful.\n", MOD_NAME);
     return;

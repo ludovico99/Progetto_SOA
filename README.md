@@ -35,7 +35,7 @@ sudo make install_the_usctm
 Il progetto prevede la realizzazione di un linux device driver che implementi block level maintenance di messaggi utente. Un blocco del block-device ha taglia 4 KB e mantiene 6 (2 bytes per i metadati e 4 bytes per memorizzare la posizione all'interno della lista doppiamente collegata dei messaggi validi) bytes di dati utente e 4 KB - 6 bytes per i metadati. Si richiede l'implementazione di 3 system calls non nativamente supportate dal VFS:
 - int [put_data](/user_data_management_project/userdatamgmt_sc.c#L4)(char* source, size_t size) 
 - int [get_data](/user_data_management_project/userdatamgmt_sc.c#L226) (int offset, char * destination, size_t size)
-- int [invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L332) (int offset)
+- int [invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L324) (int offset)
 
 e di 3 file operations che driver deve supportare:
 - int [open](/user_data_management_project/userdatamgmt_driver.c#L218) (struct inode*, struct file*)
@@ -207,19 +207,18 @@ Andiamo ad analizzare più in dettaglio le system calls sys_put_data, sys_get_da
     2. Si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L252)
     3. Si controlla il valore di size e offset; se è maggiore della SIZE, cioè il numero massimo di bytes per un messaggio, allora size è "limitata" a SIZE. Inoltre, se size è minore di zero o se offset è minore di 0 o maggiore di nblocks -1 viene ritornato -EINVAL.  [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L260)
     4. Si **aggiunge 1 all'epoca corrente** e si individua all'interno della lista doppiamente collegata il messaggio, che corrisponde al blocco con indice in input. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L270)
-    5. Se il blocco mantiene un messaggio valido allora si va a leggere da device. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L282)
-    6. All'interno di un ciclo while vengono gestiti eventuali residui nella consegna all'utente. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L298)
-    7. Infine, viene individuato, a partire dall'epoca corrente, l'indice all'interno dell'array standing. Viene, quindi, aggiunto 1 nell'entry con l'index trovato, si decrementa l'usage counter e si va a risvegliare il thread per andare a valutare nuovamente la condizione.. 
-    [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L316)
+    5. Se il blocco mantiene un messaggio valido allora si va a leggere da device. Si leggono al piu un numero di bytes pari alla dimensione del buffer user [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L282)
+    6. Infine, viene individuato, a partire dall'epoca corrente, l'indice all'interno dell'array standing. Viene, quindi, aggiunto 1 nell'entry con l'index trovato, si decrementa l'usage counter e si va a risvegliare il thread per andare a valutare nuovamente la condizione.. 
+    [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L310)
 > **NOTE**: Si è  deciso di far rilasciare il token (al reader) solo al **completamento della lettura da device** per evitare il caso seguente: se il rilascio del gettone in standing fosse stato inserito prima della lettura del device sarebbe potuto accadere che, in concorrenza, uno scrittore avrebbe potuto invalidare il blocco da leggere e poi sovrascriverne il contenuto con una sys_put_data. Di conseguenza, la lettura da device sarebbe risultata inconsistente in relazione ai dati che avrebbe dovuto leggere.
 
-- int [sys_invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L333) (int offset):
-    1. Si rende impossibile l'operazione di unmount del FS aggiungendo 1 all'usage counter. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L356)
-    2. Si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L359)
-    3. Si controlla il valore di offset: se offset è minore di 0 o maggiore di nblocks -1 viene ritornato -EINVAL.  [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L366)
-    4.  Il thread corrente **va in attesa del lock in scrittura**. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L373).
+- int [sys_invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L324) (int offset):
+    1. Si rende impossibile l'operazione di unmount del FS aggiungendo 1 all'usage counter. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L348)
+    2. Si verifica che il file system sia stato montato. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L351)
+    3. Si controlla il valore di offset: se offset è minore di 0 o maggiore di nblocks -1 viene ritornato -EINVAL.  [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L358)
+    4.  Il thread corrente **va in attesa del lock in scrittura**. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L366).
     5. Una volta **acquisito il lock**, si accede con costo 0(1) ai metadati del blocco ad indice pari all'offset in input. Se il blocco è già stato invalidato allora viene ritornato -ENODATA. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L378)
-    6. Si procede ad **aggiornare la lista dei messaggi validi**, andando ad eliminare l'elemento, se esiste, con indice pari ad offset dalla lista. Ciò, è fatto con costo costante O(1) in seguito all'utilizzo di una lista doppiamente collegata ([Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L395)). 
+    6. Si procede ad **aggiornare la lista dei messaggi validi**, andando ad eliminare l'elemento, se esiste, con indice pari ad offset dalla lista. Ciò, è fatto con costo costante O(1) in seguito all'utilizzo di una lista doppiamente collegata ([Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L387)). 
     La delete è caratterizzata dai seguenti passi: 
         1. Se l'elemento da eliminare è la testa allora viene aggiornato head in modo che punti ad head->next. Ciò è visibile ai lettori immediatamente. Tutti i lettori d'ora in poi vedranno un nuovo elemento che head della lista dei messaggi validi. Viene anche aggiornato il prev del successore del nodo da eliminare. [Vedere qui](/user_data_management_project/utils.c#L236). 
         2. Se l'elemento da eliminare è in mezzo alla lista allora viene sganciato andando ad aggiornare il puntatore a next del predecessore. Come già detto in precedenza, per costruzione quest'operazione è il punto di linearizzazione per i lettori. Infine, viene aggiornato il puntatore prev del successore. [Vedere qui](/user_data_management_project/utils.c#L242).
@@ -232,9 +231,9 @@ Andiamo ad analizzare più in dettaglio le system calls sys_put_data, sys_get_da
         5. Infine, si va in attesa del termine del grace period sull'epoca precedente. 
         6. Si rinizializza a 0 il numero di lettori dell'epoca precedente.
 
-        [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L408)
+        [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L400)
 
-    8. Al termine dell'epoca viene rilasciato lo spinlock, viene liberata la memoria del buffer, si decrementa l'usage counter e si risveglia il thread in attesa quando si verifica la condizione desiderata. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L428)
+    8. Al termine dell'epoca viene rilasciato lo spinlock, viene liberata la memoria del buffer, si decrementa l'usage counter e si risveglia il thread in attesa quando si verifica la condizione desiderata. [Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L420)
 
 
 ## Implementazione delle file_operations supportate dal device driver: 
@@ -286,7 +285,7 @@ Andiamo ad analizzare più in dettaglio le file_operations open, read e close:
 > **In questa nuova versione, in genere, la lettura dell' intero device avviene in un costo lineare nel numero di messaggi validi, ma il grace period viene notevolmente allungato. Nella precedente versione, invece, il costo era quadratico ma il grace period era molto più breve.** 
 
 ## Linearizzabilità e RCU:
-In un approccio RCU i lettori eseguono in concorrenza (sia tra loro sia rispetto agli scrittori), senza l'utilizzo dei lock, mentre gli scrittori (sys_put_data e sys_invalidate_data) per poter operare sulla struttura dati condivisa devono acquisire un lock in scrittura. Gli scrittori linearizzano i cambiamenti, rendendoli visibili ai reader atomicamente. Nel caso dell'invalidazione, per evitare il rilascio di un elemento che può essere acceduto ancora da lettori standing, la free del messaggio corrispondente avviene solo dopo che il grace period è terminato ([Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L421)). Il grace period termina quando tutti i lettori che hanno letto la precedente versione della struttura dati condivisa hanno rilasciato un token nell'entry corrispondente dell'array standing.     
+In un approccio RCU i lettori eseguono in concorrenza (sia tra loro sia rispetto agli scrittori), senza l'utilizzo dei lock, mentre gli scrittori (sys_put_data e sys_invalidate_data) per poter operare sulla struttura dati condivisa devono acquisire un lock in scrittura. Gli scrittori linearizzano i cambiamenti, rendendoli visibili ai reader atomicamente. Nel caso dell'invalidazione, per evitare il rilascio di un elemento che può essere acceduto ancora da lettori standing, la free del messaggio corrispondente avviene solo dopo che il grace period è terminato ([Vedere qui](/user_data_management_project/userdatamgmt_sc.c#L413)). Il grace period termina quando tutti i lettori che hanno letto la precedente versione della struttura dati condivisa hanno rilasciato un token nell'entry corrispondente dell'array standing.     
 
 Nella sezione [data structures](/README.md#L82) è presente una descrizione dettagliata delle variabili di sincronizzazione utilizzate. I lettori (in sys_get_data e dev_read) vanno ad aumentare di 1 il contatore epoch, che rappresenta il numero di lettori nell'epoca corrente e al termine vanno a rilasciare un "token" nell'entry dell'array standing. L'indice, in standing, è il bit più significativo di epoch. Gli scrittori, invece, acquisicono il lock in scrittura per poter modificare la struttura condivisa. A differenza dell'inserimento, l'invalidazione va a cambiare l'epoca corrente e va in attesa (in polling) che tutti i lettori dell'epoca corrente (coloro che hanno letto la struttura dati prima del punto di materializzazione dell'invalidazione) abbiamo rilasciato il loro token. Inoltre, nella init all'interno della mount viene creato un kernel thread che va a simulare un'operazione di aggiornamento ed update dell'epoca corrente affinchè il contatore epoch non vada in overflow (se il numero di lettori sull'epoca corrente è maggiore di 2^63).
 
@@ -308,7 +307,7 @@ Una volta analizzati i lettori è possibile approfondire maggiormente il comport
 
    **Una volta impostati i precedenti campi è possibile agganciare il nuovo elemento andando a cambiare il next del predecessore. D'ora in poi tutti i lettori che accedono alla struttura vedranno questo elemento.** 
 
-- int [sys_invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L332) (int offset): Sappiamo che l'invalidate_data, invece, va a sganciare un elemento all'interno della lista dei messaggi validi.                     
+- int [sys_invalidate_data](/user_data_management_project/userdatamgmt_sc.c#L324) (int offset): Sappiamo che l'invalidate_data, invece, va a sganciare un elemento all'interno della lista dei messaggi validi.                     
 Come rendere quest' operazione atomica per i lettori?
     - Se l'elemento da eliminare è la **testa** allora viene aggiornato **head in modo che punti ad head->next**. Ciò è visibile ai lettori immediatamente. Tutti i lettori d'ora in poi vedranno un nuovo elemento come head della lista dei messaggi validi e andranno a scorrere la lista a partire dal prossimo elemento. Il predecessore è NULL, quindi non viene aggiornato. Infine, il prev del successore del nodo da eliminare viene portato a NULL.
     - Se l'elemento da eliminare è **in mezzo alla lista** allora viene sganciato andando ad **aggiornare il puntatore a next del predecessore**. Come già detto in precedenza, per costruzione quest'operazione è il punto di linearizzazione per i lettori. Infine, viene aggiornato il puntatore prev del successore. **Attraverso il primo swap di pointers, tutti i lettori d'ora in poi non vedranno l'elemento da eliminare**.
@@ -365,6 +364,7 @@ La fase di compilazione è caratterizzata dai seguenti passi:
     - sys_call_table_address: Indirizzo di memoria virtuale della system call table
     - sys_ni_syscall_address: Indirizzo di memoria virtuale della sys_ni_syscall
     - free_entries: Array di indici nella system call table di entry che puntano a sys_ni_syscall
+    - num_entries_found: Numero di entry libere individuate.
 
     I module parameters di the_usctm vengono passati al modulo implementato, ancora una volta come parametri. Nell'init del suddetto modulo viene invocata get_entries() che, in base all' array di free entries, va ad individuare le entry libere all'interno della system call table. Successivamente, si fa l'unprotect della memoria e si vanno a scrivere gli indirizzi delle system call implementate (sys_put_data, sys_get_data, sys_invalidate_data) nelle entry della system call table individuate in precedenza. Infine, si esegue la protect_memory().
 

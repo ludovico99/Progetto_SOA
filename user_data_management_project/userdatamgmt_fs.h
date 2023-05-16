@@ -55,4 +55,6 @@ extern unsigned int num_insertions;
 
 extern uint64_t file_size;
 
+extern struct task_struct *the_daemon;
+
 #endif
