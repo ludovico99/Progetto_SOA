@@ -4,7 +4,7 @@
 #define NUM_THREADS 4 // Number of threads to be spawned
 #define NBLOCKS 250   // Number of blocks of the image
 #define REQS 20       // Number of system call invocation for each thread
-#define TO_READ 100   // Number of bytes to be read by dev_read and sys_get_data
+#define TO_READ 150   // Number of bytes to be read by dev_read and sys_get_data
 #ifdef MULTI_THREAD
 
 #define MULTI_OPS -1
