@@ -101,7 +101,7 @@ read:
         else
             read_residual_flag = false;
 
-        block_to_read = my_off / SIZE + 2; // the value 2 accounts for superblock and file-inode on device
+        block_to_read = get_offset((curr_msg->index)); // the value 2 accounts for superblock and file-inode on device
 
         // Consistency check: block_to_read must be less or equal than nblocks + 2
         if (block_to_read > nblocks + 2)
@@ -175,7 +175,6 @@ exit:
     if (curr_msg == NULL)
     {
         printk("%s: Device read completed ...", MOD_NAME);
-
         my_off = file_size;
         the_message->insert_index = INVALID;
     }

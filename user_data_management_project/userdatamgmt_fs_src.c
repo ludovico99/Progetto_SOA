@@ -170,11 +170,11 @@ static void userdatafs_kill_superblock(struct super_block *s)
                 memcpy(&(the_block->metadata), &the_metadata, MD_SIZE - POS_SIZE);
                 the_block->position = INVALID;
             }
+
         }
+
         // Sets the dirty bit of the bh structure and marks it as requiring writeback.
         mark_buffer_dirty(bh);
-
-        AUDIT printk("%s: Page-cache write back-daemon will flush changes into the device", MOD_NAME);
 
         brelse(bh);
     }
