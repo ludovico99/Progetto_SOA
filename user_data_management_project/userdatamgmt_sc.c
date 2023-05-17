@@ -300,10 +300,10 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
             len = size; // If the size of the buffer is less than len then len is costrained to size
 
         ret = copy_to_user(destination, dev_blk->data, len); // Returns number of bytes that could not be copied
-    }
-    AUDIT printk("%s: Thread with PID %d has completed the read operation ...", MOD_NAME, current->pid);
-    ret = len - ret;
 
+        AUDIT printk("%s: Thread with PID %d has completed the read operation with %d bytes read  ...", MOD_NAME, current->pid, len - ret);
+        ret = len - ret;
+    }
     brelse(bh);
 exit:
 
