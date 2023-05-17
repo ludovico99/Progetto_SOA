@@ -34,7 +34,7 @@
 #include "userdatamgmt_driver.h"
 #include "utils.h"
 #include "userdatamgmt.h"
-#include "lib/include/usctm.h"
+#include "lib/include/scth.h"
 
 // Contains the file system type
 #include "userdatamgmt_fs_src.c"

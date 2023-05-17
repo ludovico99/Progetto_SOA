@@ -20,9 +20,9 @@
 #include <asm/apic.h>
 #include <linux/syscalls.h>
 
-#include "include/usctm.h"
+#include "include/scth.h"
 
-#define LIBNAME "USCTM"
+#define LIBNAME "SCTH"
 
 unsigned long sys_call_table_address = 0x0;
 module_param(sys_call_table_address, ulong, 0660);

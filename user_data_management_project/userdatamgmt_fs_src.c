@@ -200,6 +200,7 @@ exit:
     if (the_daemon != NULL) {
         AUDIT printk("%s: Stopping the kernel daemon ...", MOD_NAME);
         kthread_stop(the_daemon);
+        the_daemon = NULL;
     }
 
     // Finally, it prints a log message indicating that unmount was successful and returns.

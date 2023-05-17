@@ -1,8 +1,8 @@
 
 obj-m += progetto_soa.o 
-progetto_soa-objs += userdatamgmt.o file.o dir.o utils.o lib/usctm.o
+progetto_soa-objs += userdatamgmt.o file.o dir.o utils.o lib/scth.o
 
-NBLOCKS = 250
+NBLOCKS = 10000
 TOT_BLOCKS = $(shell expr $(NBLOCKS) + 2)
 #MOUNT_DIR = /home/ludovico99/Scrivania/Progetto_SOA/user_data_management_project/mount/
 
