@@ -290,7 +290,6 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 
     if (dev_blk != NULL)
     {
-
         msg_len = get_length(dev_blk->metadata);
 
         AUDIT printk("%s: Thread with PID %d is reading the block at index %d", MOD_NAME, current->pid, offset);
@@ -303,6 +302,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 
         AUDIT printk("%s: Thread with PID %d has completed the read operation with %d bytes read  ...", MOD_NAME, current->pid, len - ret);
         ret = len - ret;
+        
     }
     brelse(bh);
 exit:
