@@ -207,7 +207,7 @@ void free_array(struct blk_element **head)
 {
     int i;
     /* It then frees the memory allocated for the array and sorted list using the kfree (or vmalloc) and free_list() functions, respectively.*/
-    for (i = 0; i < nblocks; i++)
+    for (i = 0; i < dev_info.nblocks; i++)
     {
         if (head[i] == NULL)
             break;
@@ -215,7 +215,7 @@ void free_array(struct blk_element **head)
     }
 
     // Freeing the head of the array...
-    if (sizeof(struct blk_element *) * nblocks < 128 * 1024)
+    if (sizeof(struct blk_element *) * dev_info.nblocks < 128 * 1024)
         kfree(head);
     else
         vfree(head);

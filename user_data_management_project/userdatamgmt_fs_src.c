@@ -1,18 +1,18 @@
 #define EXPORT_SYMTAB
 
-struct bdev_metadata bdev_md = {0, NULL, NULL};
-struct mount_metadata mount_md = {false, "/"};
-struct rcu_data rcu;
-struct task_struct *the_daemon = NULL;
-int nblocks = 0;           // Real number of blocks into the device
-uint64_t file_size = 0;    // Size of the file that represent the block device
+struct bdev_metadata  __attribute__((aligned(64))) bdev_md = {0, NULL, NULL};
+struct mount_metadata  __attribute__((aligned(64))) mount_md = {false, "/"};
+struct rcu_data  __attribute__((aligned(64))) rcu;
 struct blk_element **head; // It's the array of block's metadata
 
-unsigned int num_insertions = 0;
-
 static struct super_operations my_super_ops = {};
-
 static struct dentry_operations my_dentry_ops = {};
+
+struct task_struct *the_daemon = NULL;
+
+struct device_info  __attribute__((aligned(64))) dev_info = {0,0,0};
+
+
 
 DECLARE_WAIT_QUEUE_HEAD(unmount_queue); // This variable is a wait queue for threads that are still executing.
 
@@ -55,12 +55,12 @@ int userdatafs_fill_super(struct super_block *sb, void *data, int silent)
     // check on the number of manageable blocks
     inode_disk = (struct userdatafs_inode *)bh->b_data;
 
-    file_size = inode_disk->file_size;
-    nblocks = file_size / BLK_SIZE; // Computing the number of block in the device
+    dev_info.device_size = inode_disk->file_size;
+    dev_info.nblocks = inode_disk->file_size / BLK_SIZE; // Computing the number of block in the device
 
-    printk("%s: number of block in the device is %d", MOD_NAME, nblocks);
+    printk("%s: number of block in the device is %d", MOD_NAME, dev_info.nblocks);
     brelse(bh);
-    if (NBLOCKS < nblocks)
+    if (NBLOCKS < dev_info.nblocks)
     {
         printk("%s: Too many block to manage", MOD_NAME);
         return -EINVAL;
@@ -147,7 +147,7 @@ static void userdatafs_kill_superblock(struct super_block *s)
         curr = curr->next;
     }
 
-    for (i = 0; i < nblocks; i++)
+    for (i = 0; i < dev_info.nblocks; i++)
     {
         offset = get_offset(i);
 
@@ -253,10 +253,10 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         init(&rcu);
 
         // Allocates memory to the 'head' using kzalloc or vmalloc based on the size of 'unsigned int * NBLOCKS'
-        if (sizeof(struct blk_element *) * nblocks < 128 * 1024)
-            head = (struct blk_element **)kzalloc(sizeof(struct blk_element *) * nblocks, GFP_KERNEL);
+        if (sizeof(struct blk_element *) * dev_info.nblocks < 128 * 1024)
+            head = (struct blk_element **)kzalloc(sizeof(struct blk_element *) * dev_info.nblocks, GFP_KERNEL);
         else
-            head = (struct blk_element **)vmalloc(sizeof(struct blk_element *) * nblocks);
+            head = (struct blk_element **)vmalloc(sizeof(struct blk_element *) * dev_info.nblocks);
 
         if (!head)
         {
@@ -265,7 +265,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
             goto exit_2;
         }
         // Creating the array and the "overlayed" list that contains all valid messages
-        for (i = 0; i < nblocks; i++)
+        for (i = 0; i < dev_info.nblocks; i++)
         { /*Loops over all blocks in the block device, reads each block from the block device and checks whether it is a valid message or not by reading its metadata.
           It then inserts it into an array and sorted list based on its index*/
 
@@ -325,7 +325,7 @@ struct dentry *userdatafs_mount(struct file_system_type *fs_type, int flags, con
         the iterative version with upper bound O(n^2) is preferred. */
         // quickSort(rcu.first, rcu.last); // Sorting with upper bound O(n*log(n))
         if (rcu.last != NULL)
-            num_insertions = rcu.last->ordering.position; // Set the value of total number of insertions to the number of valid messages...
+            dev_info.num_insertions = rcu.last->ordering.position; // Set the value of total number of insertions to the number of valid messages...
 
     exit_2:
         if (unlikely(IS_ERR(ret)))

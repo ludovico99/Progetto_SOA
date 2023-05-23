@@ -58,17 +58,17 @@ struct current_message
 // This struct contains the count, block_device pointer and path string of the block device.
 struct bdev_metadata
 {
-    unsigned int count;
+    unsigned int count  __attribute__((aligned(64)));
     struct block_device *bdev;
     const char *path; // path to the block device to open
-} __attribute__((aligned(64)));
+};
 
 // This struct contains mounted flag and mount_point string.
 struct mount_metadata
 {
-    bool mounted;
+    bool mounted __attribute__((aligned(64)));
     char *mount_point; // Not exploited
-} __attribute__((aligned(64)));
+};
 
 /*This struct contains the head pointer to blk_element list, first and last pointers to message list, standing (an array of integers representing epochs), epoch (the current epoch), next_epoch_index (the index of the next epoch), and write_lock (a spinlock used to acquire the lock before modifying the shared data structure).
 All of these variables are used to implement RCU approach.*/
@@ -80,6 +80,6 @@ struct rcu_data
     unsigned long epoch __attribute__((aligned(64)));            // In memory alignment to reduce CC transactions
     int next_epoch_index;                                        // index of the next epoch
     spinlock_t write_lock;                                       // write lock to be acquired in order to modify the shared data structure
-} __attribute__((aligned(64)));
+};
 
 #endif

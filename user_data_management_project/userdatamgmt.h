@@ -5,7 +5,7 @@
 #include <linux/fs.h>
 
 #define MOD_NAME "BLOCK-LEVEL DATA MANAGEMENT SERVICE" //This is a macro that defines the name of the module as a string.
-#define  AUDIT if(1) //This is a debugging macro.
+#define  AUDIT if(0) //This is a debugging macro.
 #define BLK_SIZE 4096 //This macro defines the block size in bytes.
 
 #define EPOCHS (2) //This macro defines the number of times an operation can be performed before it has to wait for next epoch.

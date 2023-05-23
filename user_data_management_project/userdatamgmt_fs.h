@@ -49,11 +49,13 @@ extern const struct inode_operations userdatafs_inode_ops;
 // dir.c
 extern const struct file_operations userdatafs_dir_operations;
 
-extern int nblocks;
+struct device_info {
+	uint64_t device_size  __attribute__((aligned(64))); // Size of the device
+	int nblocks  __attribute__((aligned(64)));// Real number of blocks into the device
+	unsigned int num_insertions  __attribute__((aligned(64)));// counter of the number of the insertions
+};
 
-extern unsigned int num_insertions;
-
-extern uint64_t file_size;
+extern struct device_info dev_info ;
 
 extern struct task_struct *the_daemon;
 

@@ -34,7 +34,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         return -EBADF;
     }
 
-    printk("%s: Read operation called with len %ld - and offset %lld (the current file size is %lld)", MOD_NAME, len, *off, file_size);
+    printk("%s: Read operation called with len %ld - and offset %lld (the current file size is %lld)", MOD_NAME, len, *off, dev_info.device_size);
 
     if (rcu.first == NULL)
     { // No valid messages available
@@ -42,7 +42,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
     }
 
     // check that *off is within boundaries
-    if (my_off >= file_size)
+    if (my_off >= dev_info.device_size)
     {
         return 0;
     }
@@ -80,7 +80,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         the_message->curr = lookup_by_insert_index(rcu.first, the_message->insert_index);
         if (the_message->curr == NULL) // There are no other valid messages
         {
-            my_off = file_size;
+            my_off = dev_info.device_size;
             the_message->insert_index = INVALID;
             goto release_token;
         }
@@ -104,7 +104,7 @@ read:
         block_to_read = get_offset((curr_msg->index)); // the value 2 accounts for superblock and file-inode on device
 
         // Consistency check: block_to_read must be less or equal than nblocks + 2
-        if (block_to_read > nblocks + 2)
+        if (block_to_read > dev_info.nblocks + 2)
         {
             printk("%s: block_to_read is greater than nblocks + 2", MOD_NAME);
             ret = -ENODATA;
@@ -175,7 +175,7 @@ exit:
     if (curr_msg == NULL)
     {
         printk("%s: Device read completed ...", MOD_NAME);
-        my_off = file_size;
+        my_off = dev_info.device_size;
         the_message->insert_index = INVALID;
     }
 

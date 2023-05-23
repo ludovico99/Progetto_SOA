@@ -87,7 +87,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
     the_tail = &rcu.last;
 
     // Traverses the array starting from the first element and returns the first empty block encountered.
-    for (i = 0; i < nblocks; i++)
+    for (i = 0; i < dev_info.nblocks; i++)
     {
         if (head[i] == NULL)
             continue; // Consistency check
@@ -158,7 +158,7 @@ asmlinkage int sys_put_data(char *source, ssize_t size)
         the_message->index = get_index(ret);
         the_message->elem = the_block;
         the_message->prev = *the_tail;
-        the_message->ordering.insert_index = ++num_insertions;
+        the_message->ordering.insert_index = ++dev_info.num_insertions;
 
         // Don't need locked / synchronizing operation since no readers have to traverse the array of metadata
         the_block->msg = the_message; // Assigns the reference to the_message variable to the msg field of the_block structure.
@@ -259,7 +259,7 @@ asmlinkage long sys_get_data(int offset, char *destination, ssize_t size)
 
     if (size > SIZE)
         size = SIZE;
-    if (size < 0 || offset > nblocks - 1 || offset < 0)
+    if (size < 0 || offset > dev_info.nblocks - 1 || offset < 0)
     {
         printk("%s: The offset is not valid", MOD_NAME);
         __sync_fetch_and_sub(&(bdev_md.count), 1); // The unmount operation is permitted
@@ -355,7 +355,7 @@ asmlinkage long sys_invalidate_data(int offset)
         goto exit;
     }
 
-    if (offset > nblocks - 1 || offset < 0)
+    if (offset > dev_info.nblocks - 1 || offset < 0)
     {
         printk("%s: Offset is invalid", MOD_NAME);
         ret = -EINVAL;
