@@ -41,7 +41,7 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         return 0;
     }
 
-    // check that *off is within boundaries
+    // check that my_off is less than device size. If all messages have been read then my_off is device_size. It's my exit condition
     if (my_off >= dev_info.device_size)
     {
         return 0;
@@ -76,9 +76,9 @@ static ssize_t dev_read(struct file *filp, char __user *buf, size_t len, loff_t 
         read_residual_flag = false;
 
         the_message->insert_index++;
-
+        //Searching for the message with the specified insert_index
         the_message->curr = lookup_by_insert_index(rcu.first, the_message->insert_index);
-        if (the_message->curr == NULL) // There are no other valid messages
+        if (the_message->curr == NULL) // There are no other valid messages with insert_index less than insert_index
         {
             my_off = dev_info.device_size;
             the_message->insert_index = INVALID;
@@ -101,7 +101,7 @@ read:
         else
             read_residual_flag = false;
 
-        block_to_read = get_offset((curr_msg->index)); // the value 2 accounts for superblock and file-inode on device
+        block_to_read = get_offset((curr_msg->index)); // The block to read is the offset of the index of the current message ...
 
         // Consistency check: block_to_read must be less or equal than nblocks + 2
         if (block_to_read > dev_info.nblocks + 2)
